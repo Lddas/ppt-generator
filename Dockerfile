@@ -14,5 +14,8 @@ COPY . .
 # Set working directory to backend
 WORKDIR /app/backend
 
-# Fetch assets and start the application
-CMD ["sh", "-c", "python fetch_assets.py && uvicorn main:app --host 0.0.0.0 --port $PORT"]
+# Create startup script
+RUN echo '#!/bin/bash\npython fetch_assets.py\nuvicorn main:app --host 0.0.0.0 --port $PORT' > start.sh && chmod +x start.sh
+
+# Start the application
+CMD ["./start.sh"]
