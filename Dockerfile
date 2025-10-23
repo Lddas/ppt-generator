@@ -11,5 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
+# Set working directory to backend
+WORKDIR /app/backend
+
 # Fetch assets and start the application
-CMD ["sh", "-c", "cd backend && python fetch_assets.py && uvicorn main:app --host 0.0.0.0 --port $PORT"]
+CMD ["sh", "-c", "python fetch_assets.py && uvicorn main:app --host 0.0.0.0 --port $PORT"]
