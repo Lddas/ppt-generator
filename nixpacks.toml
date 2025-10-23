@@ -2,7 +2,7 @@
 nixPkgs = ["python39", "python39Packages.pip"]
 
 [phases.install]
-cmds = ["python3 -m pip install -r backend/requirements.txt"]
+cmds = ["pip install -r backend/requirements.txt"]
 
 [phases.build]
 cmds = ["echo 'Build complete'"]
