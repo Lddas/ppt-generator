@@ -1,0 +1,8 @@
+input_0_A = "/Users/leodas/Downloads/PPT_FILE/dist/uploaded_logo_32709.png"
+input_0_B = "12 au 13 septembre"
+input_1_A = "PAPAOUTAI"
+input_1_B = "10"
+input_1_C = "2"
+input_1_D = "1"
+input_1_E = "Du 12 au 13 septembre"
+input_koutoubia_5 = "5"
