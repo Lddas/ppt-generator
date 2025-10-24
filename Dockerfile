@@ -1,6 +1,6 @@
 FROM python:3.9-slim
 
-WORKDIR /app
+WORKDIR /app/backend
 
 # Copy requirements first for better caching
 COPY backend/requirements.txt .
@@ -11,11 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
-# Set working directory to backend
-WORKDIR /app/backend
-
-# Create startup script
-RUN echo '#!/bin/bash\npython fetch_assets.py\nuvicorn main:app --host 0.0.0.0 --port $PORT' > start.sh && chmod +x start.sh
+# Create a simple startup script
+RUN echo 'python fetch_assets.py' > /tmp/fetch.sh && \
+    echo 'uvicorn main:app --host 0.0.0.0 --port $PORT' >> /tmp/fetch.sh && \
+    chmod +x /tmp/fetch.sh
 
 # Start the application
-CMD ["./start.sh"]
+CMD ["/bin/bash", "/tmp/fetch.sh"]
