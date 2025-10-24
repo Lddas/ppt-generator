@@ -11,5 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
-# Start the application directly
-CMD ["python", "-c", "import subprocess; subprocess.run(['python', 'fetch_assets.py']); subprocess.run(['uvicorn', 'main:app', '--host', '0.0.0.0', '--port', '8000'])"]
+# Start the application
+CMD ["sh", "-c", "python fetch_assets.py && uvicorn main:app --host 0.0.0.0 --port $PORT"]
