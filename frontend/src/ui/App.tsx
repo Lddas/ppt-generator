@@ -26,7 +26,7 @@ type DayPlan = {
   steps: DayStep[];
 }
 
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000'
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
 
 export default function App() {
   const [client, setClient] = useState("")
