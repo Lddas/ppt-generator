@@ -161,7 +161,7 @@ async def generate(
     numPeople: int = Form(...),
     hotels: str = Form("[]"),  # JSON string
     dayPlans: str = Form("[]"),  # JSON string
-    logo: UploadFile = File(...),
+    logo: UploadFile = File(None),
 ):
     if numDays < 1 or numDays > 8:
         raise HTTPException(status_code=422, detail="numDays must be between 1 and 8")
