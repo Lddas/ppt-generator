@@ -215,3 +215,16 @@ async def generate(
 @app.get("/")
 async def root():
     return {"status": "ok"}
+
+@app.get("/debug")
+async def debug():
+    """Debug endpoint to check what files are available"""
+    files = []
+    for filename in os.listdir('.'):
+        if os.path.isfile(filename):
+            files.append(filename)
+    return {
+        "files": files,
+        "index_json_exists": os.path.exists("index.json"),
+        "working_directory": os.getcwd()
+    }
