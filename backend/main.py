@@ -65,6 +65,9 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
     output_pres = Presentation()
     output_pres.slide_width = Inches(13.33)
     output_pres.slide_height = Inches(7.5)
+    
+    # Force garbage collection after setup
+    gc.collect()
 
     # First slides
     for i in range(1, 7):
@@ -72,6 +75,9 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
             gen.NewSlide(i, "Slides_DEBUT_FIN.pptx", output_pres)
         except Exception:
             pass
+    
+    # Force garbage collection after first slides
+    gc.collect()
 
     # Multiple hotels slide
     if len(payload.get("hotels", [])) > 1:
@@ -143,6 +149,9 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
             gen.NewSlide(i, "Slides_DEBUT_FIN.pptx", output_pres)
         except Exception:
             pass
+    
+    # Force garbage collection before final save
+    gc.collect()
 
     # Save to bytes
     buf = io.BytesIO()
