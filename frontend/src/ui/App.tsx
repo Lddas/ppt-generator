@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
-const WEBSITE_PASSWORD = 'PREF-2024' // Change this to your desired password
+const WEBSITE_PASSWORD = 'PREF-2025' // Change this to your desired password
 
 const HOTEL_OPTIONS = [
   "LES JARDINS DE LA KOUTOUBIA 5*",
