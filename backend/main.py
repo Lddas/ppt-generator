@@ -53,6 +53,8 @@ def load_index_json() -> dict:
 
 
 def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
+    import gc  # For garbage collection
+    
     # Write inputs.py and reload module
     write_inputs_py(".", payload)
     import inputs
@@ -91,6 +93,9 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
                 gen.NewSlide(i, link, output_pres)
             except Exception:
                 pass
+    
+    # Force garbage collection after hotel slides
+    gc.collect()
 
     # Agenda
     # dayPlans is a list of {date, steps}
@@ -98,6 +103,9 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
     # Preserve legacy extra tail element behavior
     activities_by_day.append([])
     gen.make_agenda(output_pres, activities_by_day)
+    
+    # Force garbage collection after agenda
+    gc.collect()
 
     # Inter-days and activities
     for day_index, day_plan in enumerate(activities_by_day[:-1]):
@@ -125,6 +133,9 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
                     gen.NewSlide(i, link, output_pres)
                 except Exception:
                     pass
+        
+        # Force garbage collection after each day
+        gc.collect()
 
     # Last slides
     for i in range(8, 18):
@@ -137,7 +148,15 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
     buf = io.BytesIO()
     output_pres.save(buf)
     buf.seek(0)
-    return buf.read()
+    result = buf.read()
+    buf.close()
+    
+    # Final cleanup
+    del output_pres
+    del data
+    gc.collect()
+    
+    return result
 
 
 app = FastAPI()
