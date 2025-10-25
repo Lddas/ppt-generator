@@ -52,18 +52,10 @@ export default function App() {
         <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
           {/* PREFERENCE EVENTS Logo */}
           <div className="text-center mb-8">
-            {/* Logo Icon */}
+            {/* Simple Logo */}
             <div className="flex justify-center mb-4">
-              <div className="relative">
-                {/* Concentric circles */}
-                <div className="w-16 h-16 rounded-full bg-red-600 absolute top-0 left-0"></div>
-                <div className="w-20 h-20 rounded-full bg-red-500 absolute -top-2 -left-2"></div>
-                <div className="w-24 h-24 rounded-full bg-red-400 absolute -top-4 -left-4"></div>
-                <div className="w-28 h-28 rounded-full bg-pink-300 absolute -top-6 -left-6"></div>
-                {/* White 'p' overlay */}
-                <div className="absolute top-2 left-2 w-12 h-12 bg-white rounded-full flex items-center justify-center">
-                  <div className="text-red-600 font-bold text-lg">p</div>
-                </div>
+              <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-2xl">P</span>
               </div>
             </div>
             
