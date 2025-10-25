@@ -179,10 +179,12 @@ async def generate(
             raise HTTPException(status_code=400, detail=f"Unknown hotel: {name}")
 
     # Store uploaded logo to current directory for relative path compatibility
-    logo_filename = f"uploaded_logo_{os.getpid()}.png"
-    logo_path = os.path.join(".", logo_filename)
-    with open(logo_path, "wb") as out:
-        shutil.copyfileobj(logo.file, out)
+    logo_path = "logo_1.jpg"  # Default logo if none provided
+    if logo and logo.filename:
+        logo_filename = f"uploaded_logo_{os.getpid()}.png"
+        logo_path = os.path.join(".", logo_filename)
+        with open(logo_path, "wb") as out:
+            shutil.copyfileobj(logo.file, out)
 
     payload = {
         "client": client,
@@ -198,10 +200,12 @@ async def generate(
     try:
         pptx_bytes = generate_pptx(".", payload)
     finally:
-        try:
-            os.remove(logo_path)
-        except Exception:
-            pass
+        # Only remove uploaded logo, not default logo
+        if logo and logo.filename and logo_path != "logo_1.jpg":
+            try:
+                os.remove(logo_path)
+            except Exception:
+                pass
 
     return StreamingResponse(
         io.BytesIO(pptx_bytes),
