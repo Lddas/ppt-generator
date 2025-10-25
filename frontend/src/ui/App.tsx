@@ -172,7 +172,7 @@ export default function App() {
               <img 
                 src="/logo_1.png" 
                 alt="Your Logo" 
-                className="w-40 h-40 object-contain"
+                className="w-50 h-50 object-contain"
               />
             </div>
           </div>
