@@ -30,6 +30,8 @@ type DayPlan = {
 }
 
 export default function App() {
+  console.log('App component rendering, isAuthenticated:', false) // Debug log
+  
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [password, setPassword] = useState("")
@@ -54,7 +56,9 @@ export default function App() {
   
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('Password submitted:', password) // Debug log
     if (password === WEBSITE_PASSWORD) {
+      console.log('Password correct, setting authenticated to true') // Debug log
       setIsAuthenticated(true)
       setPasswordError("")
     } else {
@@ -68,25 +72,19 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-          {/* PREFERENCE EVENTS Logo */}
+          {/* Your Logo */}
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <div className="relative">
-                {/* Concentric circles - PREFERENCE EVENTS logo */}
-                <div className="w-16 h-16 rounded-full bg-red-600 absolute top-0 left-0"></div>
-                <div className="w-20 h-20 rounded-full bg-red-500 absolute -top-2 -left-2"></div>
-                <div className="w-24 h-24 rounded-full bg-red-400 absolute -top-4 -left-4"></div>
-                <div className="w-28 h-28 rounded-full bg-pink-300 absolute -top-6 -left-6"></div>
-                {/* White 'p' overlay */}
-                <div className="absolute top-2 left-2 w-12 h-12 bg-white rounded-full flex items-center justify-center">
-                  <div className="text-red-600 font-bold text-lg">p</div>
-                </div>
-              </div>
+              <img 
+                src="/logo_2.jpg" 
+                alt="Your Logo" 
+                className="w-20 h-20 object-contain"
+                onError={(e) => {
+                  // Fallback to logo_1 if logo_2 fails
+                  e.currentTarget.src = "/logo_1.jpg"
+                }}
+              />
             </div>
-            
-            {/* Brand Text */}
-            <h1 className="text-2xl font-bold text-black mb-1">PREFERENCE</h1>
-            <h2 className="text-xl font-medium text-red-600">EVENTS</h2>
           </div>
           
           <div className="text-center mb-6">
@@ -224,10 +222,12 @@ export default function App() {
     }
   }
 
+  console.log('Rendering main app, isAuthenticated:', isAuthenticated) // Debug log
+  
   return (
     <div className="min-h-screen">
       <div className="max-w-5xl mx-auto p-6">
-        <h1 className="text-2xl font-semibold mb-6">PPT Generator</h1>
+        <h1 className="text-2xl font-semibold mb-6">PPT Generator - MAIN APP LOADED!</h1>
         <form onSubmit={onSubmit} className="space-y-8">
           <section className="bg-white p-4 rounded shadow">
             <h2 className="font-medium mb-4">General</h2>
