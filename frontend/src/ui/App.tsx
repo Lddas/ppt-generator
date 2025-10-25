@@ -30,9 +30,31 @@ type DayPlan = {
 }
 
 export default function App() {
+  // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [password, setPassword] = useState("")
   const [passwordError, setPasswordError] = useState("")
+  
+  // Main app state
+  const [client, setClient] = useState("")
+  const [dates, setDates] = useState("")
+  const [numDays, setNumDays] = useState(2)
+  const [numNights, setNumNights] = useState(1)
+  const [numPeople, setNumPeople] = useState(10)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+
+  const [hotels, setHotels] = useState<HotelEntry[]>([
+    { hotelName: HOTEL_OPTIONS[0], rooms: 1 },
+  ])
+
+  const emptyPlans = useMemo<DayPlan[]>(
+    () => Array.from({ length: numDays }, () => ({ date: "", steps: [] })),
+    [numDays]
+  )
+  const [dayPlans, setDayPlans] = useState<DayPlan[]>(emptyPlans)
+
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,18 +72,19 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-          {/* PREFERENCE EVENTS Logo */}
+          {/* Logo */}
           <div className="text-center mb-8">
-            {/* Simple Logo */}
             <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-2xl">P</span>
-              </div>
+              <img 
+                src="/logo_1.jpg" 
+                alt="Logo" 
+                className="w-20 h-20 object-contain"
+                onError={(e) => {
+                  // Fallback to logo_2 if logo_1 fails
+                  e.currentTarget.src = "/logo_2.jpg"
+                }}
+              />
             </div>
-            
-            {/* Brand Text */}
-            <h1 className="text-2xl font-bold text-black mb-1">PREFERENCE</h1>
-            <h2 className="text-xl font-medium text-red-600">EVENTS</h2>
           </div>
           
           <div className="text-center mb-6">
@@ -100,24 +123,6 @@ export default function App() {
       </div>
     )
   }
-
-  // Main application (existing code)
-  const [client, setClient] = useState("")
-  const [dates, setDates] = useState("")
-  const [numDays, setNumDays] = useState(2)
-  const [numNights, setNumNights] = useState(1)
-  const [numPeople, setNumPeople] = useState(10)
-  const [logoFile, setLogoFile] = useState<File | null>(null)
-
-  const [hotels, setHotels] = useState<HotelEntry[]>([
-    { hotelName: HOTEL_OPTIONS[0], rooms: 1 },
-  ])
-
-  const emptyPlans = useMemo<DayPlan[]>(
-    () => Array.from({ length: numDays }, () => ({ date: "", steps: [] })),
-    [numDays]
-  )
-  const [dayPlans, setDayPlans] = useState<DayPlan[]>(emptyPlans)
 
   React.useEffect(() => {
     setDayPlans((prev) => {
@@ -167,9 +172,6 @@ export default function App() {
       } : d
     ))
   }
-
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
