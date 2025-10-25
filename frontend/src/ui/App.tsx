@@ -78,7 +78,7 @@ export default function App() {
               <img 
                 src="/logo_2.jpg" 
                 alt="Your Logo" 
-                className="w-20 h-20 object-contain"
+                className="w-24 h-24 object-contain"
                 onError={(e) => {
                   // Fallback to logo_1 if logo_2 fails
                   e.currentTarget.src = "/logo_1.jpg"
@@ -223,6 +223,42 @@ export default function App() {
   }
 
   console.log('Rendering main app, isAuthenticated:', isAuthenticated) // Debug log
+  
+  // SIMPLE TEST - if this doesn't work, there's a fundamental issue
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-green-100 p-8">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-4xl font-bold text-green-800 mb-8">🎉 SUCCESS! MAIN APP IS WORKING!</h1>
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h2 className="text-2xl font-semibold mb-4">PPT Generator</h2>
+            <p className="text-gray-600 mb-4">The main app is now loading correctly!</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Client Name</label>
+                <input 
+                  type="text" 
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  placeholder="Enter client name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Dates</label>
+                <input 
+                  type="text" 
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  placeholder="Enter dates"
+                />
+              </div>
+              <button className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700">
+                Generate PPT
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
   
   return (
     <div className="min-h-screen">
