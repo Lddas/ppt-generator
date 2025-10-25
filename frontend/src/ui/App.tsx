@@ -47,11 +47,7 @@ export default function App() {
     { hotelName: HOTEL_OPTIONS[0], rooms: 1 },
   ])
 
-  const emptyPlans = useMemo<DayPlan[]>(
-    () => Array.from({ length: numDays }, () => ({ date: "", steps: [] })),
-    [numDays]
-  )
-  const [dayPlans, setDayPlans] = useState<DayPlan[]>(emptyPlans)
+  const [dayPlans, setDayPlans] = useState<DayPlan[]>([])
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -72,19 +68,25 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-          {/* Logo */}
+          {/* PREFERENCE EVENTS Logo */}
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <img 
-                src="/logo_1.jpg" 
-                alt="Logo" 
-                className="w-20 h-20 object-contain"
-                onError={(e) => {
-                  // Fallback to logo_2 if logo_1 fails
-                  e.currentTarget.src = "/logo_2.jpg"
-                }}
-              />
+              <div className="relative">
+                {/* Concentric circles - PREFERENCE EVENTS logo */}
+                <div className="w-16 h-16 rounded-full bg-red-600 absolute top-0 left-0"></div>
+                <div className="w-20 h-20 rounded-full bg-red-500 absolute -top-2 -left-2"></div>
+                <div className="w-24 h-24 rounded-full bg-red-400 absolute -top-4 -left-4"></div>
+                <div className="w-28 h-28 rounded-full bg-pink-300 absolute -top-6 -left-6"></div>
+                {/* White 'p' overlay */}
+                <div className="absolute top-2 left-2 w-12 h-12 bg-white rounded-full flex items-center justify-center">
+                  <div className="text-red-600 font-bold text-lg">p</div>
+                </div>
+              </div>
             </div>
+            
+            {/* Brand Text */}
+            <h1 className="text-2xl font-bold text-black mb-1">PREFERENCE</h1>
+            <h2 className="text-xl font-medium text-red-600">EVENTS</h2>
           </div>
           
           <div className="text-center mb-6">
@@ -125,10 +127,7 @@ export default function App() {
   }
 
   React.useEffect(() => {
-    setDayPlans((prev) => {
-      const next = Array.from({ length: numDays }, (_, i) => prev[i] || { date: "", steps: [] })
-      return next
-    })
+    setDayPlans(Array.from({ length: numDays }, (_, i) => ({ date: "", steps: [] })))
   }, [numDays])
 
   function updateHotel(index: number, patch: Partial<HotelEntry>) {
