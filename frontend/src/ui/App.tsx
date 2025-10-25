@@ -47,13 +47,37 @@ export default function App() {
     }
   }
 
-  // Password protection screen
+  // Password protection screen - Main Welcome Page
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md w-96">
-          <h1 className="text-2xl font-bold text-center mb-6">PPT Generator</h1>
-          <p className="text-gray-600 text-center mb-6">Please enter the password to access this tool:</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+          {/* PREFERENCE EVENTS Logo */}
+          <div className="text-center mb-8">
+            {/* Logo Icon */}
+            <div className="flex justify-center mb-4">
+              <div className="relative">
+                {/* Concentric circles */}
+                <div className="w-16 h-16 rounded-full bg-red-600 absolute top-0 left-0"></div>
+                <div className="w-20 h-20 rounded-full bg-red-500 absolute -top-2 -left-2"></div>
+                <div className="w-24 h-24 rounded-full bg-red-400 absolute -top-4 -left-4"></div>
+                <div className="w-28 h-28 rounded-full bg-pink-300 absolute -top-6 -left-6"></div>
+                {/* White 'p' overlay */}
+                <div className="absolute top-2 left-2 w-12 h-12 bg-white rounded-full flex items-center justify-center">
+                  <div className="text-red-600 font-bold text-lg">p</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Brand Text */}
+            <h1 className="text-2xl font-bold text-black mb-1">PREFERENCE</h1>
+            <h2 className="text-xl font-medium text-red-600">EVENTS</h2>
+          </div>
+          
+          <div className="text-center mb-6">
+            <p className="text-gray-600 text-sm">Welcome to the PPT Generator</p>
+            <p className="text-gray-500 text-xs mt-1">Please enter the access password:</p>
+          </div>
           
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
             <div>
@@ -62,7 +86,7 @@ export default function App() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center"
                 required
               />
             </div>
@@ -73,11 +97,15 @@ export default function App() {
             
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-red-600 text-white py-3 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium transition-colors"
             >
               Access PPT Generator
             </button>
           </form>
+          
+          <div className="mt-6 text-center">
+            <p className="text-xs text-gray-400">© 2024 Preference Events</p>
+          </div>
         </div>
       </div>
     )
