@@ -172,7 +172,7 @@ export default function App() {
               <img 
                 src="/logo_1.png" 
                 alt="Your Logo" 
-                className="w-32 h-32 object-contain"
+                className="w-40 h-40 object-contain"
               />
             </div>
           </div>
@@ -207,7 +207,7 @@ export default function App() {
           </form>
           
           <div className="mt-6 text-center">
-            <p className="text-xs text-gray-400">© 2024 Preference Events</p>
+            <p className="text-xs text-gray-400">© 2025 Preference Events</p>
           </div>
         </div>
       </div>
