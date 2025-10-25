@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react'
 
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
+const WEBSITE_PASSWORD = 'ppt-generator-2024' // Change this to your desired password
+
 const HOTEL_OPTIONS = [
   "LES JARDINS DE LA KOUTOUBIA 5*",
   "SOFITEL MARRAKECH PALAIS IMPERIAL 5*",
@@ -29,6 +32,58 @@ type DayPlan = {
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [password, setPassword] = useState("")
+  const [passwordError, setPasswordError] = useState("")
+  
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (password === WEBSITE_PASSWORD) {
+      setIsAuthenticated(true)
+      setPasswordError("")
+    } else {
+      setPasswordError("Incorrect password. Please try again.")
+      setPassword("")
+    }
+  }
+
+  // Password protection screen
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-md w-96">
+          <h1 className="text-2xl font-bold text-center mb-6">PPT Generator</h1>
+          <p className="text-gray-600 text-center mb-6">Please enter the password to access this tool:</p>
+          
+          <form onSubmit={handlePasswordSubmit} className="space-y-4">
+            <div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+            
+            {passwordError && (
+              <p className="text-red-600 text-sm text-center">{passwordError}</p>
+            )}
+            
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              Access PPT Generator
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // Main application (existing code)
   const [client, setClient] = useState("")
   const [dates, setDates] = useState("")
   const [numDays, setNumDays] = useState(2)
