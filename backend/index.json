@@ -309,12 +309,12 @@
     "ATELIER POTERIE": {
         "index": 113,
         "nb_slides": 3,
-        "image": [8, 5]
+        "image" : [11, 10]
     },
     "ATELIER CALIGRAPHIE": {
         "index": 117,
         "nb_slides": 2,
-        "image": [8, 5]
+        "image" : [11, 9]
     },
     "INARA CAMP": {
         "ppt": "liste_HOTELS.pptx",
@@ -510,37 +510,37 @@
         "ppt": "liste_REPAS.pptx",
         "index": 129,
         "nb_slides": 135,
-        "image" : 
+        "image" : [11, 8]
     },
     "LE VERGER PALAIS RONSARD": {
         "ppt": "liste_REPAS.pptx",
         "index": 137,
         "nb_slides": 5,
-        "image" : 
+        "image" : [11, 7]
     },
     "SOIREE BLANCHE DANS LE DESERT D'AGAFAY": {
         "ppt": "liste_REPAS.pptx",
         "index": 143,
         "nb_slides": 15,
-        "image" : 
+        "image" : [11, 6]
     },
     "LE NOUBA": {
         "ppt": "liste_REPAS.pptx",
         "index": 159,
         "nb_slides": 3,
-        "image" : 
+        "image" : [11, 5]
     },
     "SOIREE CAMPEMENT DAR CAID PALMERAIE": {
         "ppt": "liste_REPAS.pptx",
         "index": 163,
         "nb_slides": 12,
-        "image" : 
+        "image" : [11, 4]
     },
     "LE KABANA": {
         "ppt": "liste_REPAS.pptx",
         "index": 176,
         "nb_slides": 4,
-        "image" : 
+        "image" : [11, 3]
     },
 
 
