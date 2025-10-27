@@ -144,7 +144,7 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         gc.collect()
 
     # Last slides
-    for i in range(8, 18):
+    for i in range(8, 17):
         try:
             gen.NewSlide(i, "Slides_DEBUT_FIN.pptx", output_pres)
         except Exception:
