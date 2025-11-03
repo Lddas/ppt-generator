@@ -6,116 +6,27 @@
         "index": 2,
         "nb_slides": 1
     },
-    "JARDINS DE LA KOUTOUBIA": {
+    "LES JARDINS DE LA KOUTOUBIA 5*": {
         "ppt": "liste_HOTELS.pptx",
-        "index": 120,
+        "index": 3,
         "nb_slides": 5
     },
-    "SOFITEL MARRAKECH PALAIS IMPERIAL": {
+    "SOFITEL MARRAKECH PALAIS IMPERIAL 5*": {
         "ppt": "liste_HOTELS.pptx",
-        "index": 126,
-        "nb_slides": 8
-    },
-    "BARCELO PALMERAIE": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 144,
-        "nb_slides": 8
-    },
-    "KENZI ROSE GARDEN": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 104,
-        "nb_slides": 15
-    },
-    "HIVERNAGE": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 21,
-        "nb_slides": 4
-    },
-    "DAR SABRA": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 26,
-        "nb_slides": 5
-    },
-    "RIAD AL JAZIRA": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 32,
-        "nb_slides": 6
-    },
-    "HOTEL IBEROSTAR": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 39,
-        "nb_slides": 10
-    },
-    "HOTEL RADISSON": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 50,
-        "nb_slides": 5
-    },
-    "PURE HOUSE": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 56,
-        "nb_slides": 4
-    },
-    "HOTEL DU GOLF, PICKALBATROS": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 61,
+        "index": 8,
         "nb_slides": 9
     },
-    "VILLA ALBAICIN": {
+    "BARCELO PALMERAIE 5*": {
         "ppt": "liste_HOTELS.pptx",
-        "index": 71,
-        "nb_slides": 12
+        "index": 17,
+        "nb_slides": 11
     },
-    "VILLA ANTHEA": {
+    "KENZI ROSE GARDEN HOTEL 5*": {
         "ppt": "liste_HOTELS.pptx",
-        "index": 84,
-        "nb_slides": 12
+        "index": 28,
+        "nb_slides": 14
     },
-    "MAMOUNIA": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 97,
-        "nb_slides": 6
-    },
-    "FELLAH": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 135,
-        "nb_slides": 8
-    },
-    "ES SAADI": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 153,
-        "nb_slides": 6
-    },
-    "MOVENPICK": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 160,
-        "nb_slides": 6
-    },
-    "DOMAINE DE LA ROSERAIE": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 209,
-        "nb_slides": 9
-    },
-    "PALAIS RONSARD HOTEL": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 167,
-        "nb_slides": 6
-    },
-    "TIGMIZA": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 174,
-        "nb_slides": 16
-    },
-    "KASBAH D'IF": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 191,
-        "nb_slides": 8
-    },
-    "PARK HYATT": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 200,
-        "nb_slides": 8
-    },
+
 
 
 
@@ -126,217 +37,112 @@
 
     "ACTIVITES":{},
 
-    "MONTGOLFIERE": {
+    "REUNION A L'HOTEL KOUTOUBIA": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 26,
-        "nb_slides": 2,
-        "image": [9, 6]
-    },
-    "YOGA": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 29,
+        "index": 2,
         "nb_slides": 1,
-        "image": [9, 8]
+        "image": [7, 3]
     },
-    "KARTING": {
+    "REUNION A L'HOTEL SOFITEL": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 31,
-        "nb_slides": 2,
-        "image": [9, 7]
-    },
-    "TRANSFERT EN CALECHE": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 34,
+        "index": 3,
         "nb_slides": 1,
-        "image": [8, 9]
+        "image": [7, 3]
     },
-    "RALLYE KASBAH EXPRESS": {
+    "DEPART EN 4X4": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 36,
-        "nb_slides": 5,
-        "image": [8, 5]
-    },
-    "EXCURSION EN 4X4": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 42,
+        "index": 4,
         "nb_slides": 3,
         "image": [7, 5]
     },
-    "OLYMPIADES BERBERES": {
+    "DECOUVERTE DU DESERT EN 4X4": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 46,
-        "nb_slides": 3,
-        "image": [7, 7]
-    },
-    "QUAD ET BUGGY A AGAFAY": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 50,
-        "nb_slides": 3,
-        "image": [9, 3]
-    },
-    "QUAD ET BUGGY AUTOUR DU LAC": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 54,
+        "index": 7,
         "nb_slides": 2,
-        "image": [9, 3]
+        "image": [7, 5]
     },
-    "QUAD": {
+    "COURS DE CUISINE MAROCAINE": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 57,
+        "index": 9,
         "nb_slides": 4,
-        "image": [9, 3]
+        "image": [7, 2]
     },
-    "COURS DE CUISINE MEDINA": {
+    "TEMPS LIBRE DANS LES SOUKS": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 62,
-        "nb_slides": 4,
-        "image": [8, 3]
-    },
-    "COURS DE CUISINE CHEF TARIK": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 67,
-        "nb_slides": 4,
-        "image": [8, 3]
-    },
-    "DECOUVERTE DES SOUKS": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 72,
+        "index": 13,
         "nb_slides": 3,
         "image": [8, 5]
     },
-    "MUSEE YSL ET JARDINS MAJORELLES": {
+    "PLENIERE ET REUNIONS HOTEL KOUTOUBIA": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 76,
-        "nb_slides": 6,
+        "index": 16,
+        "nb_slides": 3,
+        "image": [7, 3]
+    },
+    "ACTIVITES À LA CARTE": {
+        "ppt": "liste_ACTIVITES.pptx",
+        "index": 19,
+        "nb_slides": 3,
+        "image": [8, 8]
+    },
+    "CALECHE": {
+        "ppt": "liste_ACTIVITES.pptx",
+        "index": 23,
+        "nb_slides": 1,
+        "image": [8, 9]
+    },
+    "JARDINS MAJORELLE": {
+        "ppt": "liste_ACTIVITES.pptx",
+        "index": 24,
+        "nb_slides": 3,
+        "image": [8, 7]
+    },
+    "MUSEE YVES SAINT LAURENT": {
+        "ppt": "liste_ACTIVITES.pptx",
+        "index": 27,
+        "nb_slides": 3,
         "image": [8, 7]
     },
     "PALAIS DE LA BAHIA": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 83,
+        "index": 30,
         "nb_slides": 2,
         "image": [9, 1]
+
     },
-    "MEDERSA BEN YOUSSEF": {
+    "DE LA MEDERSA BEN YOUSSEF": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 86,
+        "index": 32,
         "nb_slides": 4,
-        "image": [10, 16]
+        "image": [9, 2]
     },
-    "AMANAR": {
+    "BALADE EN QUADS": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 91,
+        "index": 36,
+        "nb_slides": 1,
+        "image": [9, 3]
+    },
+    "TYROLIENNES AU DOMAINE D'AMANAR": {
+        "ppt": "liste_ACTIVITES.pptx",
+        "index": 37,
         "nb_slides": 4,
         "image": [9, 4]
+
     },
-    "TREK DANS L'ATLAS AVEC DEJEUNER CHEZ L'HABITANT": {
+    "TREK DANS L'ATLAS": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 103,
-        "nb_slides": 5,
-        "image": [9, 5]
-    },
-    "TREK DANS L'ATLAS AVEC DEJEUNER A LA KASBAH DU TOUBKAL": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 96,
-        "nb_slides": 6,
-        "image": [9, 5]
-    },
-    "CHALLENGE CAROSSA": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 109,
+        "index": 41,
         "nb_slides": 3,
-        "image": [9, 9]
+        "image": [9, 5]
     },
     "APRES MIDI LIBRE": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 80,
-        "nb_slides": 1,
-        "image": [8, 8]
-    },
-    "MATINEE LIBRE": {
-        "ppt": "liste_ACTIVITES.pptx",
         "index": 45,
         "nb_slides": 1,
-        "image": [8, 8]
+        "image": [7, 7]
     },
-    "ACTIVITES A LA CARTE": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 16,
-        "nb_slides": 3,
-        "image": [8, 5]
-    },
-    "CHOIX D'ACTIVITES": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 89,
-        "nb_slides": 1,
-        "image": [8, 5]
-    },
-    "JOURNEE DE REUNION": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 4,
-        "nb_slides": 1,
-        "image": [7, 3]
-    },
-    "MATINEE DE REUNION": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 6,
-        "nb_slides": 1,
-        "image": [7, 3]
-    },
-    "APRES MIDI DE REUNION": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 8,
-        "nb_slides": 1,
-        "image": [7, 3]
-    },
-    "DETENTE BELDI COUNTRY CLUB": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 20,
-        "nb_slides": 2,
-        "image": [8, 8]
-    },
-    "SPA": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 23,
-        "nb_slides": 2,
-        "image": [11, 1]
-    },
-    "BIVOUAC SOUS LES ETOILES": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 4,
-        "nb_slides": 14,
-        "image": [10, 8]
-    },
-    "ATELIER POTERIE": {
-        "index": 113,
-        "nb_slides": 3,
-        "image" : [11, 10]
-    },
-    "ATELIER CALIGRAPHIE": {
-        "index": 117,
-        "nb_slides": 2,
-        "image" : [11, 9]
-    },
-    "INARA CAMP": {
-        "ppt": "liste_HOTELS.pptx",
-        "index": 74,
-        "nb_slides": 15,
-        "image": [10, 7]
-    },
-    "ARRIVEE": {
-        "index": 10,
-        "nb_slides": 1,
-        "image" : [7, 1]
-    },
-    "DEPART AEROPORT EN 4X4": {
-        "index": 12,
-        "nb_slides": 1,
-        "image" : [7, 1]
-    },
-    "DEPART": {
-        "index": 14,
-        "nb_slides": 1,
-        "image" : [8, 10]
-    },
+
+
 
 
 
@@ -344,223 +150,96 @@
 
    "REPAS":{},
 
-    "DINER A L'HOTEL": {
+   "LODGE DU DESERT": {
         "ppt": "liste_REPAS.pptx",
         "index": 6,
-        "nb_slides": 1,
+        "nb_slides": 6,
+        "image" : [7, 6]
+    },
+    "KASBAH DU TOUBKAL": {
+        "ppt": "liste_REPAS.pptx",
+        "index": 35,
+        "nb_slides": 3,
+        "image" : [8, 12]
+    },
+    "DINER A L'HOTEL KOUTOUBIA": {
+        "ppt": "liste_REPAS.pptx",
+        "index": 2,
+        "nb_slides": 2,
+        "image" : [7, 11]
+    },
+    "DINER A L'HOTEL SOFITEL": {
+        "ppt": "liste_REPAS.pptx",
+        "index": 4,
+        "nb_slides": 2,
         "image" : [7, 11]
     },
     "SOIREE DANS LE DESERT": {
         "ppt": "liste_REPAS.pptx",
-        "index": 51,
-        "nb_slides": 8,
+        "index": 12,
+        "nb_slides": 3,
         "image" : [8, 6]
     },
     "PALAIS JAD MAHAL": {
         "ppt": "liste_REPAS.pptx",
-        "index": 100,
-        "nb_slides": 6,
+        "index": 15,
+        "nb_slides": 5,
         "image" : [8, 1]
     },
     "DEJEUNER A L'HOTEL": {
         "ppt": "liste_REPAS.pptx",
-        "index": 4,
+        "index": 22,
         "nb_slides": 1,
         "image" : [8, 11]
     },
     "PALAIS GHARNATA": {
         "ppt": "liste_REPAS.pptx",
-        "index": 46,
-        "nb_slides": 4,
+        "index": 26,
+        "nb_slides": 5,
         "image" : [7, 4]
     },
-    "DAR SOUKKAR": {
+    "PALAIS DAR SOUKKAR": {
         "ppt": "liste_REPAS.pptx",
-        "index": 40,
+        "index": 30,
         "nb_slides": 5,
         "image" : [7, 8]
     },
     "DAR ZELLIJ": {
         "ppt": "liste_REPAS.pptx",
-        "index": 110,
+        "index": 38,
         "nb_slides": 4,
         "image" : [8, 4]
     },
     "AFTER AU BABOUCHKA": {
         "ppt": "liste_REPAS.pptx",
-        "index": 107,
+        "index": 20,
         "nb_slides": 2,
         "image" : [8, 2]
     },
-    "KASBAH BELDI DEJEUNER ET DETENTE": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 12,
-        "nb_slides": 4,
-        "image" : [10, 15]
-    },
-    "LE FLOUKA": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 17,
-        "nb_slides": 3,
-        "image" : [10, 14]
-    },
-    "KSAR EL HAMRA": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 27,
-        "nb_slides": 2,
-        "image" : [10, 13]
-    },
-    "DAR CHERIFA": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 30,
-        "nb_slides": 2,
-        "image" : [10, 12]
-    },
-    "DEJEUNER AU DADA": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 33,
-        "nb_slides": 2,
-        "image" : [10, 11]
-    },
-    "DINER PALAIS RONSARD": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 36,
-        "nb_slides": 3,
-        "image" : [10, 10]
-    },
-    "SOIREE CAMPEMENT PALMERAIE": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 60,
-        "nb_slides": 10,
-        "image" : [10, 9]
-    },
-    "LA PAUSE": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 21,
-        "nb_slides": 5,
-        "image" : [10, 8]
-    },
-    "NOMAD ROOFTOP": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 80,
-        "nb_slides": 3,
-        "image" : [10, 6]
-    },
-    "LA MAISON ARABE": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 84,
-        "nb_slides": 2,
-        "image" : [10, 5]
-    },
-    "BO ZIN": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 87,
-        "nb_slides": 2,
-        "image" : [10, 4]
-    },
-    "JARDIN LOTUS": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 90,
-        "nb_slides": 3,
-        "image" : [10, 3]
-    },
-    "NARWANA": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 94,
-        "nb_slides": 5,
-        "image" : [10, 2]
-    },
-    "EPICURIEN": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 115,
-        "nb_slides": 4,
-        "image" : [10, 1]
-    },
-    "CASINO": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 120,
-        "nb_slides": 2,
-        "image" : [9, 12]
-    },
-    "DAR MOHA": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 123,
-        "nb_slides": 2,
-        "image" : [9, 11]
-    },
-    "TERRES AMANAR": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 126,
-        "nb_slides": 2,
-        "image" : [9, 10]
-    },
-    "LODGE DU DESERT": {
-        "ppt": "liste_ACTIVITES.pptx",
-        "index": 21,
-        "nb_slides": 5,
-        "image" : [10, 8]
-    },
-    "TERRASSE DES EPICES": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 8,
-        "nb_slides": 3,
-        "image" : [11, 2]
-    },
-    "SOIREE BELDI COUNTRY CLUB": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 129,
-        "nb_slides": 135,
-        "image" : [11, 8]
-    },
-    "LE VERGER PALAIS RONSARD": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 137,
-        "nb_slides": 5,
-        "image" : [11, 7]
-    },
-    "SOIREE BLANCHE DANS LE DESERT D'AGAFAY": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 143,
-        "nb_slides": 15,
-        "image" : [11, 6]
-    },
-    "LE NOUBA": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 159,
-        "nb_slides": 3,
-        "image" : [11, 5]
-    },
-    "SOIREE CAMPEMENT DAR CAID PALMERAIE": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 163,
-        "nb_slides": 12,
-        "image" : [11, 4]
-    },
-    "LE KABANA": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 176,
-        "nb_slides": 4,
-        "image" : [11, 3]
+    "DINER A L'HOTEL": {
+        "ppt": "FALSE",
+        "image" : [7, 11]
     },
 
 
 
 
-    "PETIT DEJEUNER":{},
 
+
+
+    "DIVERS":{},
+
+    "ARRIVEE": {
+        "ppt": "FALSE",
+        "image" : [7, 1]
+    },
     "PETIT DEJEUNER A L'HOTEL": {
         "ppt": "FALSE",
         "image" : [7, 9]
     },
-    "PETIT DEJEUNER BELDI COUNTRY CLUB": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 71,
-        "nb_slides": 2,
-        "image" : [8, 8]
-    },
-    "PETIT DEJEUNER BERBERE": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 2,
+    "ACTIVITES A LA CARTE": {
+        "ppt": "liste_ACTIVITES.pptx",
+        "index": 44,
         "nb_slides": 1,
         "image" : [8, 8]
     }
