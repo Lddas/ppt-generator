@@ -255,11 +255,18 @@ async def generate(
             except Exception:
                 pass
 
+    # Generate filename with client name
+    sanitized_client = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in client).strip()
+    if not sanitized_client:
+        sanitized_client = "client"
+    sanitized_client = sanitized_client.replace(' ', '_')
+    filename = f"presentation_marrakech_{sanitized_client}.pptx"
+    
     return StreamingResponse(
         io.BytesIO(pptx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={
-            "Content-Disposition": 'attachment; filename="presentation.pptx"'
+            "Content-Disposition": f'attachment; filename="{filename}"'
         },
     )
 
