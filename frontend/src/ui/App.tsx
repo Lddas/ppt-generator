@@ -100,7 +100,6 @@ export default function App() {
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   React.useEffect(() => {
     setDayPlans(Array.from({ length: numDays }, (_, i) => ({ date: "", steps: [] })))
@@ -163,7 +162,6 @@ export default function App() {
     e.preventDefault()
     setSubmitting(true)
     setError(null)
-    setSuccessMessage(null)
     try {
       if (!logoFile) {
         setError("Please upload a logo image.")
@@ -200,27 +198,11 @@ export default function App() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      
-      // Generate filename with client name
-      const sanitizedClient = (client || 'client').trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-      const filename = `presentation_marrakech_${sanitizedClient}.pptx`
-      a.download = filename
-      
+      a.download = 'presentation.pptx'
       document.body.appendChild(a)
       a.click()
       a.remove()
       window.URL.revokeObjectURL(url)
-      
-      // Show success message with download path
-      const isWindows = navigator.userAgent.includes('Windows')
-      const isMac = navigator.userAgent.includes('Mac')
-      const downloadsPath = isWindows 
-        ? 'Downloads folder'
-        : isMac
-        ? 'Downloads folder'
-        : 'Downloads folder'
-      
-      setSuccessMessage(`PowerPoint downloaded in: ${downloadsPath}/${filename}`)
     } catch (err: any) {
       setError(err?.message || 'Unknown error')
     } finally {
@@ -450,37 +432,8 @@ export default function App() {
             </div>
           </section>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
-          
-          {successMessage && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-              {successMessage}
-            </div>
-          )}
-          
-          {submitting && (
-            <div className="bg-blue-50 border border-blue-200 px-4 py-4 rounded">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-blue-700 font-medium">Generating PowerPoint...</span>
-                <span className="text-blue-600 text-sm">This may take a moment</span>
-              </div>
-              <div className="w-full bg-blue-200 rounded-full h-2.5 overflow-hidden">
-                <div 
-                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" 
-                  style={{ 
-                    width: '100%',
-                    animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                  }}
-                ></div>
-              </div>
-            </div>
-          )}
-          
-          <button disabled={submitting} type="submit" className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-50 hover:bg-green-700 transition-colors">
+          {error && <div className="text-red-600">{error}</div>}
+          <button disabled={submitting} type="submit" className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-50">
             {submitting ? 'Generating…' : 'Generate PowerPoint'}
           </button>
         </form>

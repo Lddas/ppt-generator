@@ -17,10 +17,30 @@ import importlib
 
 
 ALLOWED_HOTELS = {
-    "LES JARDINS DE LA KOUTOUBIA 5*",
-    "SOFITEL MARRAKECH PALAIS IMPERIAL 5*",
-    "BARCELO PALMERAIE 5*",
-    "KENZI ROSE GARDEN HOTEL 5*",
+    "JARDINS DE LA KOUTOUBIA",
+    "SOFITEL MARRAKECH PALAIS IMPERIAL",
+    "BARCELO PALMERAIE",
+    "KENZI ROSE GARDEN",
+    "HIVERNAGE",
+    "DAR SABRA",
+    "RIAD AL JAZIRA",
+    "HOTEL IBEROSTAR",
+    "HOTEL RADISSON",
+    "PURE HOUSE",
+    "HOTEL DU GOLF, PICKALBATROS",
+    "VILLA ALBAICIN",
+    "VILLA ANTHEA",
+    "MAMOUNIA",
+    "FELLAH",
+    "ES SAADI",
+    "MOVENPICK",
+    "DOMAINE DE LA ROSERAIE",
+    "PALAIS RONSARD HOTEL",
+    "TIGMIZA",
+    "KASBAH D'IF",
+    "PARK HYATT",
+    "BIVOUAC SOUS LES ETOILES",
+    "INARA CAMP",
 }
 
 
@@ -235,18 +255,11 @@ async def generate(
             except Exception:
                 pass
 
-    # Generate filename with client name
-    sanitized_client = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in client).strip()
-    if not sanitized_client:
-        sanitized_client = "client"
-    sanitized_client = sanitized_client.replace(' ', '_')
-    filename = f"presentation_marrakech_{sanitized_client}.pptx"
-    
     return StreamingResponse(
         io.BytesIO(pptx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"'
+            "Content-Disposition": 'attachment; filename="presentation.pptx"'
         },
     )
 
