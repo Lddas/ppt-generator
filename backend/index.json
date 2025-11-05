@@ -397,7 +397,7 @@
         "nb_slides": 4,
         "image" : [10, 15]
     },
-    "LE FLOUKA": {
+    "FLOUKA": {
         "ppt": "liste_REPAS.pptx",
         "index": 17,
         "nb_slides": 3,
@@ -511,7 +511,7 @@
         "nb_slides": 7,
         "image" : [11, 8]
     },
-    "LE VERGER PALAIS RONSARD": {
+    "VERGER PALAIS RONSARD": {
         "ppt": "liste_REPAS.pptx",
         "index": 137,
         "nb_slides": 5,
@@ -523,7 +523,7 @@
         "nb_slides": 15,
         "image" : [11, 6]
     },
-    "LE NOUBA": {
+    "NOUBA": {
         "ppt": "liste_REPAS.pptx",
         "index": 159,
         "nb_slides": 3,
@@ -535,11 +535,17 @@
         "nb_slides": 12,
         "image" : [11, 4]
     },
-    "LE KABANA": {
+    "KABANA": {
         "ppt": "liste_REPAS.pptx",
         "index": 176,
         "nb_slides": 4,
         "image" : [11, 3]
+    },
+    "LOTUS CLUB": {
+        "ppt": "liste_REPAS.pptx",
+        "index": 181,
+        "nb_slides": 7,
+        "image" : [11, 11]
     },
 
 
