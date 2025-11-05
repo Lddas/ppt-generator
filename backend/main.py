@@ -67,125 +67,159 @@ def write_inputs_py(tmp_dir: str, payload: dict) -> None:
             # else: other hotels currently do not have direct input bindings
 
 
-def load_index_json() -> dict:
-    with open("index.json", "r", encoding="utf-8") as fh:
-        return json.load(fh)
+def load_index_json(work_dir: str = ".") -> dict:
+    index_path = os.path.join(work_dir, "index.json")
+    print(f"DEBUG: Loading index.json from: {os.path.abspath(index_path)}")
+    if not os.path.exists(index_path):
+        print(f"DEBUG: ERROR - index.json not found at {index_path}")
+        print(f"DEBUG: Current directory: {os.getcwd()}")
+        print(f"DEBUG: Files in current dir: {os.listdir('.')[:10]}")
+    with open(index_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+        print(f"DEBUG: Loaded {len(data)} entries from index.json")
+        return data
 
 
 def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
     import gc  # For garbage collection
     
-    # Write inputs.py and reload module
-    write_inputs_py(".", payload)
-    import inputs
-    importlib.reload(inputs)
-
-    data = load_index_json()
-
-    output_pres = Presentation()
-    output_pres.slide_width = Inches(13.33)
-    output_pres.slide_height = Inches(7.5)
+    # Ensure we're in the backend directory (where PPTX files and index.json are)
+    original_cwd = os.getcwd()
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(backend_dir)
+    print(f"DEBUG: Changed to backend directory: {backend_dir}")
     
-    # Force garbage collection after setup
-    gc.collect()
+    try:
+        # Write inputs.py and reload module
+        write_inputs_py(".", payload)
+        import inputs
+        importlib.reload(inputs)
 
-    # First slides
-    for i in range(1, 7):
-        try:
-            gen.NewSlide(i, "Slides_DEBUT_FIN.pptx", output_pres)
-        except Exception:
-            pass
-    
-    # Force garbage collection after first slides
-    gc.collect()
+        data = load_index_json(".")
 
-    # Multiple hotels slide
-    if len(payload.get("hotels", [])) > 1:
-        try:
-            gen.NewSlide(1, "liste_HOTELS.pptx", output_pres)
-        except Exception:
-            pass
+        output_pres = Presentation()
+        output_pres.slide_width = Inches(13.33)
+        output_pres.slide_height = Inches(7.5)
+        
+        # Force garbage collection after setup
+        gc.collect()
 
-    # Hotel slides
-    for h in payload.get("hotels", []):
-        hotel_name = h.get("hotelName")
-        if not hotel_name or hotel_name not in data:
-            continue
-        link = data[hotel_name]["ppt"]
-        slide_index = data[hotel_name]["index"]
-        nb_slides = data[hotel_name]["nb_slides"]
-        for i in range(slide_index - 1, slide_index + nb_slides - 1):
+        # First slides
+        for i in range(1, 7):
             try:
-                gen.NewSlide(i, link, output_pres)
+                gen.NewSlide(i, "Slides_DEBUT_FIN.pptx", output_pres)
             except Exception:
                 pass
-    
-    # Force garbage collection after hotel slides
-    gc.collect()
+        
+        # Force garbage collection after first slides
+        gc.collect()
 
-    # Agenda
-    # dayPlans is a list of {date, steps}
-    activities_by_day = [dp.get("steps", []) for dp in payload.get("dayPlans", [])]
-    # Preserve legacy extra tail element behavior
-    activities_by_day.append([])
-    gen.make_agenda(output_pres, activities_by_day)
-    
-    # Force garbage collection after agenda
-    gc.collect()
-
-    # Inter-days and activities
-    for day_index, day_plan in enumerate(activities_by_day[:-1]):
-        day_date = payload.get("dayPlans", [{}])[day_index].get("date", "")
-
-        # Slides between days based on number of steps
-        if len(day_plan) in (2, 3, 4, 5, 6):
-            mapping = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
+        # Multiple hotels slide
+        if len(payload.get("hotels", [])) > 1:
             try:
-                gen.CopyAndModifySlide(mapping[len(day_plan)], output_pres, day_plan, day_index + 1, day_date)
+                gen.NewSlide(1, "liste_HOTELS.pptx", output_pres)
             except Exception:
                 pass
 
-        # Copy referenced slides for each step
-        for etape in day_plan:
-            if etape not in data:
+        # Hotel slides
+        for h in payload.get("hotels", []):
+            hotel_name = h.get("hotelName")
+            print(f"DEBUG: Processing hotel: '{hotel_name}'")
+            print(f"DEBUG: Hotel in data: {hotel_name in data}")
+            if not hotel_name:
+                print(f"DEBUG: Skipping hotel - no name")
                 continue
-            link = data[etape].get("ppt")
-            if link == "FALSE":
+            if hotel_name not in data:
+                print(f"DEBUG: Skipping hotel '{hotel_name}' - not found in index.json")
+                print(f"DEBUG: Available hotels (first 5): {list(data.keys())[:5]}")
                 continue
-            slide_index = data[etape]["index"]
-            nb_slides = data[etape]["nb_slides"]
+            link = data[hotel_name]["ppt"]
+            slide_index = data[hotel_name]["index"]
+            nb_slides = data[hotel_name]["nb_slides"]
+            print(f"DEBUG: Adding hotel slides: {hotel_name}, index {slide_index}, nb_slides {nb_slides}")
             for i in range(slide_index - 1, slide_index + nb_slides - 1):
                 try:
                     gen.NewSlide(i, link, output_pres)
-                except Exception:
+                except Exception as e:
+                    print(f"DEBUG: Error adding slide {i} for {hotel_name}: {e}")
                     pass
         
-        # Force garbage collection after each day
+        # Force garbage collection after hotel slides
         gc.collect()
 
-    # Last slides
-    for i in range(8, 17):
-        try:
-            gen.NewSlide(i, "Slides_DEBUT_FIN.pptx", output_pres)
-        except Exception:
-            pass
-    
-    # Force garbage collection before final save
-    gc.collect()
+        # Agenda
+        # dayPlans is a list of {date, steps}
+        activities_by_day = [dp.get("steps", []) for dp in payload.get("dayPlans", [])]
+        print(f"DEBUG: Activities by day: {activities_by_day}")
+        # Preserve legacy extra tail element behavior
+        activities_by_day.append([])
+        gen.make_agenda(output_pres, activities_by_day)
+        
+        # Force garbage collection after agenda
+        gc.collect()
 
-    # Save to bytes
-    buf = io.BytesIO()
-    output_pres.save(buf)
-    buf.seek(0)
-    result = buf.read()
-    buf.close()
-    
-    # Final cleanup
-    del output_pres
-    del data
-    gc.collect()
-    
-    return result
+        # Inter-days and activities
+        for day_index, day_plan in enumerate(activities_by_day[:-1]):
+            day_date = payload.get("dayPlans", [{}])[day_index].get("date", "")
+
+            # Slides between days based on number of steps
+            if len(day_plan) in (2, 3, 4, 5, 6):
+                mapping = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
+                try:
+                    gen.CopyAndModifySlide(mapping[len(day_plan)], output_pres, day_plan, day_index + 1, day_date)
+                except Exception:
+                    pass
+
+            # Copy referenced slides for each step
+            for etape in day_plan:
+                print(f"DEBUG: Processing activity: '{etape}'")
+                if etape not in data:
+                    print(f"DEBUG: Activity '{etape}' not found in index.json")
+                    print(f"DEBUG: Available activities (first 5): {list([k for k in data.keys() if data[k].get('ppt') == 'liste_ACTIVITES.pptx' or data[k].get('ppt') == 'liste_REPAS.pptx'])[:5]}")
+                    continue
+                link = data[etape].get("ppt")
+                if link == "FALSE":
+                    print(f"DEBUG: Skipping '{etape}' - ppt is FALSE")
+                    continue
+                slide_index = data[etape]["index"]
+                nb_slides = data[etape]["nb_slides"]
+                print(f"DEBUG: Adding activity slides: {etape}, index {slide_index}, nb_slides {nb_slides}")
+                for i in range(slide_index - 1, slide_index + nb_slides - 1):
+                    try:
+                        gen.NewSlide(i, link, output_pres)
+                    except Exception as e:
+                        print(f"DEBUG: Error adding slide {i} for {etape}: {e}")
+                        pass
+            
+            # Force garbage collection after each day
+            gc.collect()
+
+        # Last slides
+        for i in range(8, 17):
+            try:
+                gen.NewSlide(i, "Slides_DEBUT_FIN.pptx", output_pres)
+            except Exception:
+                pass
+        
+        # Force garbage collection before final save
+        gc.collect()
+
+        # Save to bytes
+        buf = io.BytesIO()
+        output_pres.save(buf)
+        buf.seek(0)
+        result = buf.read()
+        buf.close()
+        
+        # Final cleanup
+        del output_pres
+        del data
+        gc.collect()
+        
+        return result
+    finally:
+        # Restore original working directory
+        os.chdir(original_cwd)
 
 
 app = FastAPI()
@@ -217,6 +251,8 @@ async def generate(
     try:
         hotels_list = json.loads(hotels)
         plans_list = json.loads(dayPlans)
+        print(f"DEBUG: Received hotels: {hotels_list}")
+        print(f"DEBUG: Received dayPlans: {plans_list}")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON in hotels or dayPlans")
 
