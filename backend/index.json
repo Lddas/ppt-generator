@@ -494,7 +494,7 @@
         "image" : [9, 10]
     },
     "LODGE DU DESERT": {
-        "ppt": "liste_ACTIVITES.pptx",
+        "ppt": "liste_REPAS.pptx",
         "index": 21,
         "nb_slides": 5,
         "image" : [10, 8]
@@ -546,6 +546,12 @@
         "index": 181,
         "nb_slides": 7,
         "image" : [11, 11]
+    },
+    "KOYA": {
+        "ppt": "liste_REPAS.pptx",
+        "index": 188,
+        "nb_slides": 7,
+        "image": [12, 1]
     },
 
 

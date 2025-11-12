@@ -58,12 +58,49 @@ const HOTEL_NAME_MAP: Record<string, string> = {
   "INARA CAMP": "INARA CAMP",
 }
 
+const RESTAURANT_OPTIONS = Array.from(new Set([
+  "AFTER AU BABOUCHKA",
+  "BO ZIN",
+  "CASINO",
+  "DAR CHERIFA",
+  "DAR MOHA",
+  "DAR SOUKKAR",
+  "DAR ZELLIJ",
+  "DEJEUNER A L'HOTEL",
+  "DEJEUNER AU DADA",
+  "DINER A L'HOTEL",
+  "DINER PALAIS RONSARD",
+  "EPICURIEN",
+  "FLOUKA",
+  "JARDIN LOTUS",
+  "KABANA",
+  "KASBAH BELDI DEJEUNER ET DETENTE",
+  "KOYA",
+  "KSAR EL HAMRA",
+  "LA MAISON ARABE",
+  "LA PAUSE",
+  "LODGE DU DESERT",
+  "LOTUS CLUB",
+  "NARWANA",
+  "NOUBA",
+  "NOMAD ROOFTOP",
+  "PALAIS GHARNATA",
+  "PALAIS JAD MAHAL",
+  "SOIREE BELDI COUNTRY CLUB",
+  "SOIREE BLANCHE DANS LE DESERT D'AGAFAY",
+  "SOIREE CAMPEMENT DAR CAID PALMERAIE",
+  "SOIREE CAMPEMENT PALMERAIE",
+  "SOIREE DANS LE DESERT",
+  "TERRASSE DES EPICES",
+  "TERRES AMANAR",
+  "VERGER PALAIS RONSARD"
+])).sort()
+
 const CATEGORY_OPTIONS = {
   "Divers": ["ARRIVEE", "DEPART", "DEPART AEROPORT EN 4X4"],
   "Petit Déjeuner": ["PETIT DEJEUNER A L'HOTEL", "PETIT DEJEUNER BELDI COUNTRY CLUB", "PETIT DEJEUNER BERBERE"].sort(),
-  "Déjeuner": ["DAR CHERIFA", "DEJEUNER A L'HOTEL", "DEJEUNER AU DADA", "FLOUKA", "KASBAH BELDI DEJEUNER ET DETENTE", "KSAR EL HAMRA", "LA PAUSE", "LODGE DU DESERT", "TERRASSE DES EPICES"].sort(),
+  "Restaurants": RESTAURANT_OPTIONS,
   "Activité": ["ACTIVITES A LA CARTE", "AMANAR", "APRES MIDI DE REUNION", "APRES MIDI LIBRE", "ATELIER CALIGRAPHIE", "ATELIER POTERIE", "CHALLENGE CAROSSA", "CHOIX D'ACTIVITES", "COURS DE CUISINE CHEF TARIK", "COURS DE CUISINE MEDINA", "DECOUVERTE DES SOUKS", "DETENTE BELDI COUNTRY CLUB", "EXCURSION EN 4X4", "JOURNEE DE REUNION", "KARTING", "LODGE DU DESERT", "MATINEE DE REUNION", "MATINEE LIBRE", "MEDERSA BEN YOUSSEF", "MONTGOLFIERE", "MUSEE YSL ET JARDINS MAJORELLES", "OLYMPIADES BERBERES", "PALAIS DE LA BAHIA", "QUAD", "QUAD ET BUGGY A AGAFAY", "QUAD ET BUGGY AUTOUR DU LAC", "RALLYE KASBAH EXPRESS", "SPA", "TRANSFERT EN CALECHE", "TREK DANS L'ATLAS AVEC DEJEUNER A LA KASBAH DU TOUBKAL", "TREK DANS L'ATLAS AVEC DEJEUNER CHEZ L'HABITANT", "YOGA"].sort(),
-  "Soirée": ["AFTER AU BABOUCHKA", "BO ZIN", "CASINO", "DAR MOHA", "DAR SOUKKAR", "DAR ZELLIJ", "DINER A L'HOTEL", "DINER PALAIS RONSARD", "EPICURIEN", "JARDIN LOTUS", "KABANA", "KASBAH BELDI DEJEUNER ET DETENTE", "LA MAISON ARABE", "LOTUS CLUB", "NARWANA", "NOUBA", "NOMAD ROOFTOP", "PALAIS GHARNATA", "PALAIS JAD MAHAL", "SOIREE BELDI COUNTRY CLUB", "SOIREE BLANCHE DANS LE DESERT D'AGAFAY", "SOIREE CAMPEMENT DAR CAID PALMERAIE", "SOIREE CAMPEMENT PALMERAIE", "SOIREE DANS LE DESERT", "TERRES AMANAR", "VERGER PALAIS RONSARD"].sort()
 }
 
 type HotelEntry = { hotelName: string; rooms: number }
@@ -136,8 +173,8 @@ export default function App() {
   function addStepToDay(dayIndex: number) {
     const newStep: DayStep = {
       id: `step_${Date.now()}`,
-      category: "Divers",
-      activity: "ARRIVEE"
+      category: "",
+      activity: ""
     }
     setDayPlans((prev) => prev.map((d, i) => 
       i === dayIndex ? { ...d, steps: [...d.steps, newStep] } : d
@@ -154,7 +191,13 @@ export default function App() {
     setDayPlans((prev) => prev.map((d, i) => 
       i === dayIndex ? { 
         ...d, 
-        steps: d.steps.map(s => s.id === stepId ? { ...s, [field]: value } : s)
+        steps: d.steps.map(s => {
+          if (s.id !== stepId) return s
+          if (field === 'category') {
+            return { ...s, category: value, activity: "" }
+          }
+          return { ...s, [field]: value }
+        })
       } : d
     ))
   }
@@ -169,6 +212,16 @@ export default function App() {
         setError("Please upload a logo image.")
         setSubmitting(false)
         return
+      }
+
+      for (const [dayIdx, day] of dayPlans.entries()) {
+        for (const [stepIdx, step] of day.steps.entries()) {
+          if (!step.category || !step.activity) {
+            setError(`Day ${dayIdx + 1}, step ${stepIdx + 1} is incomplete. Please choose a category and an activity.`)
+            setSubmitting(false)
+            return
+          }
+        }
       }
 
       const fd = new FormData()
@@ -384,7 +437,7 @@ export default function App() {
                           
                           {/* Step label */}
                           <div className="mt-2 text-xs text-center max-w-24">
-                            {step.activity}
+                            {step.activity || "Select activity"}
                           </div>
                         </div>
                       ))}
@@ -424,6 +477,7 @@ export default function App() {
                               value={step.category}
                               onChange={(e) => updateStep(dayIndex, step.id, 'category', e.target.value)}
                             >
+                              <option value="" disabled>Select category</option>
                               {Object.keys(CATEGORY_OPTIONS).map(cat => (
                                 <option key={cat} value={cat}>{cat}</option>
                               ))}
@@ -433,9 +487,13 @@ export default function App() {
                             <label className="block text-xs text-gray-600 mb-1">Activity</label>
                             <select
                               className="w-full border rounded px-2 py-1 text-sm"
+                              disabled={!step.category}
                               value={step.activity}
                               onChange={(e) => updateStep(dayIndex, step.id, 'activity', e.target.value)}
                             >
+                              <option value="" disabled>
+                                {step.category ? "Select activity" : "Select category first"}
+                              </option>
                               {CATEGORY_OPTIONS[step.category as keyof typeof CATEGORY_OPTIONS]?.map(activity => (
                                 <option key={activity} value={activity}>{activity}</option>
                               ))}

@@ -158,6 +158,9 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         # Force garbage collection after agenda
         gc.collect()
 
+        # Slide for flights
+        gen.NewSlide(119, "liste_ACTIVITES.pptx", output_pres)
+
         # Inter-days and activities
         for day_index, day_plan in enumerate(activities_by_day[:-1]):
             day_date = payload.get("dayPlans", [{}])[day_index].get("date", "")
