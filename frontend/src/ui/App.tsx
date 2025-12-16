@@ -108,6 +108,8 @@ type DayStep = {
   id: string;
   category: string;
   activity: string;
+  isManual?: boolean; // true if this is a manual note
+  manualText?: string; // text content for manual notes
 }
 
 type DayPlan = { 
@@ -134,6 +136,8 @@ export default function App() {
   ])
 
   const [dayPlans, setDayPlans] = useState<DayPlan[]>([])
+  const [showManualNoteModal, setShowManualNoteModal] = useState<{dayIndex: number} | null>(null)
+  const [manualNoteText, setManualNoteText] = useState("")
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -202,6 +206,34 @@ export default function App() {
     ))
   }
 
+  function addManualNote(dayIndex: number) {
+    setShowManualNoteModal({ dayIndex })
+    setManualNoteText("")
+  }
+
+  function saveManualNote() {
+    if (!showManualNoteModal || !manualNoteText.trim()) return
+    const dayIndex = showManualNoteModal.dayIndex
+    const newManualStep: DayStep = {
+      id: `manual_${Date.now()}`,
+      category: "",
+      activity: "",
+      isManual: true,
+      manualText: manualNoteText.trim()
+    }
+    setDayPlans((prev) => prev.map((d, i) => 
+      i === dayIndex ? { ...d, steps: [...d.steps, newManualStep] } : d
+    ))
+    setShowManualNoteModal(null)
+    setManualNoteText("")
+  }
+
+  function removeStepFromDay(dayIndex: number, stepId: string) {
+    setDayPlans((prev) => prev.map((d, i) => 
+      i === dayIndex ? { ...d, steps: d.steps.filter(s => s.id !== stepId) } : d
+    ))
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
@@ -209,15 +241,17 @@ export default function App() {
     setSuccessMessage(null)
     try {
       if (!logoFile) {
-        setError("Please upload a logo image.")
+        setError("Veuillez télécharger une image de logo.")
         setSubmitting(false)
         return
       }
 
       for (const [dayIdx, day] of dayPlans.entries()) {
         for (const [stepIdx, step] of day.steps.entries()) {
+          // Skip validation for manual notes
+          if (step.isManual) continue
           if (!step.category || !step.activity) {
-            setError(`Day ${dayIdx + 1}, step ${stepIdx + 1} is incomplete. Please choose a category and an activity.`)
+            setError(`Jour ${dayIdx + 1}, étape ${stepIdx + 1} est incomplète. Veuillez choisir une catégorie et une activité.`)
             setSubmitting(false)
             return
           }
@@ -234,7 +268,8 @@ export default function App() {
       // Convert day plans to the expected format
       const convertedDayPlans = dayPlans.map(day => ({
         date: day.date,
-        steps: day.steps.map(step => step.activity)
+        steps: day.steps.filter(s => !s.isManual).map(step => step.activity),
+        manualNotes: day.steps.filter(s => s.isManual).map(step => step.manualText || "")
       }))
       fd.append('dayPlans', JSON.stringify(convertedDayPlans))
       fd.append('logo', logoFile)
@@ -273,9 +308,9 @@ export default function App() {
         ? 'Downloads folder'
         : 'Downloads folder'
       
-      setSuccessMessage(`PowerPoint downloaded in: ${downloadsPath}/${filename}`)
+      setSuccessMessage(`PowerPoint téléchargé dans : ${downloadsPath}/${filename}`)
     } catch (err: any) {
-      setError(err?.message || 'Unknown error')
+      setError(err?.message || 'Erreur inconnue')
     } finally {
       setSubmitting(false)
     }
@@ -298,8 +333,8 @@ export default function App() {
           </div>
           
           <div className="text-center mb-6">
-            <p className="text-gray-600 text-sm">Welcome to the PPT Generator</p>
-            <p className="text-gray-500 text-xs mt-1">Please enter the access password:</p>
+            <p className="text-gray-600 text-sm">Bienvenue sur le Générateur de PPT</p>
+            <p className="text-gray-500 text-xs mt-1">Veuillez entrer le mot de passe d'accès :</p>
           </div>
           
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
@@ -308,21 +343,21 @@ export default function App() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
+                placeholder="Entrer le mot de passe"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center"
                 required
               />
             </div>
             
             {passwordError && (
-              <p className="text-red-600 text-sm text-center">{passwordError}</p>
+              <p className="text-red-600 text-sm text-center">Mot de passe incorrect. Veuillez réessayer.</p>
             )}
             
             <button
               type="submit"
               className="w-full bg-red-600 text-white py-3 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium transition-colors"
             >
-              Access PPT Generator
+              Accéder au Générateur PPT
             </button>
           </form>
           
@@ -338,10 +373,10 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <div className="max-w-5xl mx-auto p-6">
-        <h1 className="text-2xl font-semibold mb-6">PPT Generator</h1>
+        <h1 className="text-2xl font-semibold mb-6">Générateur de PPT</h1>
         <form onSubmit={onSubmit} className="space-y-8">
           <section className="bg-white p-4 rounded shadow">
-            <h2 className="font-medium mb-4">General</h2>
+            <h2 className="font-medium mb-4">Général</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="block">
                 <span className="text-sm text-gray-600">Client</span>
@@ -352,19 +387,19 @@ export default function App() {
                 <input className="mt-1 w-full border rounded px-3 py-2" value={dates} onChange={(e)=>setDates(e.target.value)} />
               </label>
               <label className="block">
-                <span className="text-sm text-gray-600">Number of Days (1-8)</span>
+                <span className="text-sm text-gray-600">Nombre de jours (1-8)</span>
                 <input type="number" min={1} max={8} className="mt-1 w-full border rounded px-3 py-2" value={numDays} onChange={(e)=>setNumDays(Number(e.target.value||1))} />
               </label>
               <label className="block">
-                <span className="text-sm text-gray-600">Number of Nights</span>
+                <span className="text-sm text-gray-600">Nombre de nuits</span>
                 <input type="number" className="mt-1 w-full border rounded px-3 py-2" value={numNights} onChange={(e)=>setNumNights(Number(e.target.value||0))} />
               </label>
               <label className="block">
-                <span className="text-sm text-gray-600">Number of People</span>
+                <span className="text-sm text-gray-600">Nombre de personnes</span>
                 <input type="number" className="mt-1 w-full border rounded px-3 py-2" value={numPeople} onChange={(e)=>setNumPeople(Number(e.target.value||0))} />
               </label>
               <label className="block">
-                <span className="text-sm text-gray-600">Logo Upload</span>
+                <span className="text-sm text-gray-600">Télécharger le logo</span>
                 <input type="file" accept="image/*" className="mt-1 w-full" onChange={(e)=>setLogoFile(e.target.files?.[0]||null)} />
               </label>
             </div>
@@ -372,14 +407,14 @@ export default function App() {
 
           <section className="bg-white p-4 rounded shadow">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-medium">Hotels</h2>
-              <button type="button" onClick={addHotel} className="text-sm px-3 py-1 rounded bg-blue-600 text-white">Add Hotel</button>
+              <h2 className="font-medium">Hôtels</h2>
+              <button type="button" onClick={addHotel} className="text-sm px-3 py-1 rounded bg-blue-600 text-white">Ajouter un hôtel</button>
             </div>
             <div className="space-y-3">
               {hotels.map((h, i) => (
                 <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                   <label className="md:col-span-8 block">
-                    <span className="text-sm text-gray-600">Hotel</span>
+                    <span className="text-sm text-gray-600">Hôtel</span>
                     <select className="mt-1 w-full border rounded px-3 py-2" value={h.hotelName} onChange={(e)=>updateHotel(i, { hotelName: e.target.value })}>
                       {HOTEL_OPTIONS.map(opt => (
                         <option key={opt} value={opt}>{opt}</option>
@@ -387,12 +422,12 @@ export default function App() {
                     </select>
                   </label>
                   <label className="md:col-span-3 block">
-                    <span className="text-sm text-gray-600">Rooms</span>
+                    <span className="text-sm text-gray-600">Chambres</span>
                     <input type="number" min={1} className="mt-1 w-full border rounded px-3 py-2" value={h.rooms} onChange={(e)=>updateHotel(i, { rooms: Number(e.target.value||1) })} />
                   </label>
                   <div className="md:col-span-1">
                     {hotels.length > 1 && (
-                      <button type="button" onClick={()=>removeHotel(i)} className="text-sm px-3 py-2 rounded border w-full">Remove</button>
+                      <button type="button" onClick={()=>removeHotel(i)} className="text-sm px-3 py-2 rounded border w-full">Supprimer</button>
                     )}
                   </div>
                 </div>
@@ -401,18 +436,18 @@ export default function App() {
           </section>
 
           <section className="bg-white p-4 rounded shadow">
-            <h2 className="font-medium mb-4">Day Plans</h2>
+            <h2 className="font-medium mb-4">Plans de journées</h2>
             <div className="space-y-6">
               {dayPlans.map((day, dayIndex) => (
                 <div key={dayIndex} className="border rounded p-4">
                   <div className="mb-4">
                     <label className="block mb-2">
-                      <span className="text-sm font-medium text-gray-700">Day {dayIndex + 1} Date</span>
+                      <span className="text-sm font-medium text-gray-700">Date du jour {dayIndex + 1}</span>
                       <input 
                         className="mt-1 w-full border rounded px-3 py-2" 
                         value={day.date} 
                         onChange={(e) => updateDayPlan(dayIndex, { date: e.target.value })} 
-                        placeholder="e.g., 26 OCT"
+                        placeholder="ex: 26 OCT"
                       />
                     </label>
                   </div>
@@ -426,18 +461,18 @@ export default function App() {
                     <div className="flex items-center space-x-4 mb-6">
                       {day.steps.map((step, stepIndex) => (
                         <div key={step.id} className="flex flex-col items-center">
-                          {/* Step button */}
+                          {/* Step button - purple for manual notes, blue for regular steps */}
                           <button
                             type="button"
-                            className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center font-medium hover:bg-blue-700 transition-colors"
-                            title={`Step ${stepIndex + 1}`}
+                            className={`w-12 h-12 ${step.isManual ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-full flex items-center justify-center font-medium transition-colors`}
+                            title={step.isManual ? `Note manuelle ${stepIndex + 1}` : `Étape ${stepIndex + 1}`}
                           >
                             {stepIndex + 1}
                           </button>
                           
                           {/* Step label */}
                           <div className="mt-2 text-xs text-center max-w-24">
-                            {step.activity || "Select activity"}
+                            {step.isManual ? (step.manualText || "Note manuelle") : (step.activity || "Sélectionner une activité")}
                           </div>
                         </div>
                       ))}
@@ -450,7 +485,7 @@ export default function App() {
                         onClick={() => addStepToDay(dayIndex)}
                         className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
                       >
-                        + Add Step
+                        + Ajouter une étape
                       </button>
                       {day.steps.length > 0 && (
                         <button
@@ -458,33 +493,43 @@ export default function App() {
                           onClick={() => removeStepFromDay(dayIndex, day.steps[day.steps.length - 1].id)}
                           className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
                         >
-                          - Remove Last
+                          - Supprimer la dernière
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => addManualNote(dayIndex)}
+                        className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700"
+                      >
+                        Ajouter une case manuellement
+                      </button>
                     </div>
                   </div>
 
                   {/* Step configuration */}
                   {day.steps.length > 0 && (
                     <div className="space-y-3">
-                      <h4 className="text-sm font-medium text-gray-700">Configure Steps:</h4>
-                      {day.steps.map((step, stepIndex) => (
+                      <h4 className="text-sm font-medium text-gray-700">Configurer les étapes :</h4>
+                      {day.steps.map((step, stepIndex) => {
+                        // Skip manual notes in configuration section
+                        if (step.isManual) return null
+                        return (
                         <div key={step.id} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-gray-50 rounded">
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">Step {stepIndex + 1} - Category</label>
+                            <label className="block text-xs text-gray-600 mb-1">Étape {stepIndex + 1} - Catégorie</label>
                             <select
                               className="w-full border rounded px-2 py-1 text-sm"
                               value={step.category}
                               onChange={(e) => updateStep(dayIndex, step.id, 'category', e.target.value)}
                             >
-                              <option value="" disabled>Select category</option>
+                              <option value="" disabled>Sélectionner une catégorie</option>
                               {Object.keys(CATEGORY_OPTIONS).map(cat => (
                                 <option key={cat} value={cat}>{cat}</option>
                               ))}
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">Activity</label>
+                            <label className="block text-xs text-gray-600 mb-1">Activité</label>
                             <select
                               className="w-full border rounded px-2 py-1 text-sm"
                               disabled={!step.category}
@@ -492,7 +537,7 @@ export default function App() {
                               onChange={(e) => updateStep(dayIndex, step.id, 'activity', e.target.value)}
                             >
                               <option value="" disabled>
-                                {step.category ? "Select activity" : "Select category first"}
+                                {step.category ? "Sélectionner une activité" : "Sélectionner d'abord une catégorie"}
                               </option>
                               {CATEGORY_OPTIONS[step.category as keyof typeof CATEGORY_OPTIONS]?.map(activity => (
                                 <option key={activity} value={activity}>{activity}</option>
@@ -500,7 +545,8 @@ export default function App() {
                             </select>
                           </div>
                         </div>
-                      ))}
+                      )
+                      })}
                     </div>
                   )}
                 </div>
@@ -523,8 +569,8 @@ export default function App() {
           {submitting && (
             <div className="bg-blue-50 border border-blue-200 px-4 py-4 rounded">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-blue-700 font-medium">Generating PowerPoint...</span>
-                <span className="text-blue-600 text-sm">This may take a moment</span>
+                <span className="text-blue-700 font-medium">Génération du PowerPoint en cours...</span>
+                <span className="text-blue-600 text-sm">Cela peut prendre un moment</span>
               </div>
               <div className="w-full bg-blue-200 rounded-full h-2.5 overflow-hidden">
                 <div 
@@ -539,13 +585,51 @@ export default function App() {
           )}
           
           <button disabled={submitting} type="submit" className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-50 hover:bg-green-700 transition-colors">
-            {submitting ? 'Generating…' : 'Generate PowerPoint'}
+            {submitting ? 'Génération en cours…' : 'Générer le PowerPoint'}
           </button>
         </form>
         <div className="mt-6 text-sm text-gray-500">
-          Tip: Supported day count up to 8. For agenda, the backend will create multiple agenda slides if needed.
+          Astuce : Jusqu'à 8 jours supportés. Pour l'agenda, le backend créera plusieurs diapositives d'agenda si nécessaire.
         </div>
       </div>
+
+      {/* Manual Note Modal */}
+      {showManualNoteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Ajouter une note manuelle</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Cette note apparaîtra sur une diapositive vide dans le PowerPoint pour vous rappeler d'ajouter les images manuellement.
+            </p>
+            <textarea
+              className="w-full border rounded px-3 py-2 mb-4 min-h-[100px]"
+              value={manualNoteText}
+              onChange={(e) => setManualNoteText(e.target.value)}
+              placeholder="Entrez votre note ici..."
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowManualNoteModal(null)
+                  setManualNoteText("")
+                }}
+                className="px-4 py-2 rounded border hover:bg-gray-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={saveManualNote}
+                disabled={!manualNoteText.trim()}
+                className="px-4 py-2 rounded bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+              >
+                Ajouter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

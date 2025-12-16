@@ -1,5 +1,5 @@
 from pptx import Presentation
-from pptx.util import Pt
+from pptx.util import Pt, Inches
 from pptx.enum.text import PP_ALIGN
 import copy
 import os
@@ -466,3 +466,35 @@ def make_agenda(pasteIntoPres, activities_by_day):
 
     # Function adds one or more slides directly to pasteIntoPres
     return None
+
+
+def create_manual_note_slide(pasteIntoPres, note_text):
+    """
+    Creates a blank slide with centered text for manual notes.
+    This reminds users to add images manually.
+    """
+    slide_layout = pasteIntoPres.slide_layouts.get_by_name("Blank")
+    new_slide = pasteIntoPres.slides.add_slide(slide_layout)
+    
+    # Calculate center position (slide is 13.33 x 7.5 inches)
+    slide_width = pasteIntoPres.slide_width
+    slide_height = pasteIntoPres.slide_height
+    
+    # Create a text box in the center
+    left = Inches(1)
+    top = Inches(2.5)
+    width = slide_width - Inches(2)
+    height = Inches(2.5)
+    
+    text_box = new_slide.shapes.add_textbox(left, top, width, height)
+    text_frame = text_box.text_frame
+    text_frame.word_wrap = True
+    
+    # Set text alignment to center
+    text_frame.text = note_text
+    paragraph = text_frame.paragraphs[0]
+    paragraph.alignment = PP_ALIGN.CENTER
+    paragraph.font.size = Pt(24)
+    paragraph.font.bold = True
+    
+    return new_slide

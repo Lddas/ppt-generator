@@ -2,6 +2,7 @@ import io
 import os
 import shutil
 import tempfile
+import traceback
 from typing import List
 
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
@@ -42,6 +43,43 @@ ALLOWED_HOTELS = {
     "BIVOUAC SOUS LES ETOILES",
     "INARA CAMP",
 }
+
+
+def simplify_error_message(error: Exception) -> str:
+    """Convert complex error messages into user-friendly ones"""
+    error_str = str(error)
+    error_type = type(error).__name__
+    
+    # Handle specific common errors
+    if "WEBP" in error_str or "unsupported image format" in error_str:
+        return "ERROR: Image format not supported. Please use JPEG, PNG, BMP, GIF, or TIFF format. WEBP is not supported."
+    
+    if "FileNotFoundError" in error_type or "No such file" in error_str:
+        if "index.json" in error_str:
+            return "ERROR: Missing index.json file. Please ensure all template files are downloaded."
+        if ".pptx" in error_str:
+            return f"ERROR: Missing PowerPoint template file. Please check that all template files are available."
+        return f"ERROR: Required file not found: {error_str.split()[-1] if error_str.split() else 'unknown'}"
+    
+    if "IndexError" in error_type or "list index out of range" in error_str:
+        return "ERROR: Slide index out of range. Please check the slide number in the template file."
+    
+    if "KeyError" in error_type:
+        key = error_str.split("'")[1] if "'" in error_str else "unknown"
+        return f"ERROR: Missing data for '{key}'. Please check index.json configuration."
+    
+    # Extract the main error message (usually the last line or the ValueError message)
+    if "ValueError" in error_type:
+        # Try to extract the meaningful part
+        if ":" in error_str:
+            return f"ERROR: {error_str.split(':', 1)[-1].strip()}"
+        return f"ERROR: {error_str}"
+    
+    # For other errors, return a simplified version
+    if len(error_str) > 200:
+        return f"ERROR: {error_type}: {error_str[:150]}..."
+    
+    return f"ERROR: {error_type}: {error_str}"
 
 
 def write_inputs_py(tmp_dir: str, payload: dict) -> None:
@@ -160,6 +198,18 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
 
         # Slide for flights
         gen.NewSlide(119, "liste_ACTIVITES.pptx", output_pres)
+
+        # Manual notes slides (before day activities)
+        for day_index, day_data in enumerate(payload.get("dayPlans", [])):
+            manual_notes = day_data.get("manualNotes", [])
+            for note in manual_notes:
+                if note and note.strip():
+                    try:
+                        gen.create_manual_note_slide(output_pres, note.strip())
+                        print(f"DEBUG: Added manual note slide for day {day_index + 1}: {note[:50]}...")
+                    except Exception as e:
+                        print(f"DEBUG: Error adding manual note slide: {e}")
+                        pass
 
         # Inter-days and activities
         for day_index, day_plan in enumerate(activities_by_day[:-1]):
@@ -286,6 +336,18 @@ async def generate(
 
     try:
         pptx_bytes = generate_pptx(".", payload)
+    except Exception as e:
+        # Log full error for debugging (will appear in Render logs)
+        error_traceback = traceback.format_exc()
+        print(f"FULL ERROR TRACEBACK:\n{error_traceback}")
+        print(f"ERROR TYPE: {type(e).__name__}")
+        print(f"ERROR MESSAGE: {str(e)}")
+        
+        # Return simplified error message to user
+        simplified_error = simplify_error_message(e)
+        print(f"SIMPLIFIED ERROR (returned to user): {simplified_error}")
+        
+        raise HTTPException(status_code=500, detail=simplified_error)
     finally:
         # Only remove uploaded logo, not default logo
         if logo and logo.filename and logo_path != "logo_1.jpg":
