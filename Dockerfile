@@ -8,8 +8,11 @@ COPY backend/requirements.txt .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
-COPY . .
+# Copy the backend code
+COPY backend/ ./backend/
 
-# Start the application
-CMD ["sh", "-c", "cd backend && python fetch_assets.py && uvicorn main:app --host 0.0.0.0 --port $PORT"]
+# Download template assets at build time (not runtime)
+RUN cd backend && python fetch_assets.py
+
+# Start the application (no fetch_assets needed at runtime)
+CMD ["sh", "-c", "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"]
