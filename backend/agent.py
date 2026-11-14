@@ -29,7 +29,8 @@ _FORM_PROPERTIES = {
     "numNights": {"type": "INTEGER"},
     "numPeople": {"type": "INTEGER"},
     "hotels": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
-        "hotelName": {"type": "STRING"}, "rooms": {"type": "INTEGER"}}}},
+        "hotelName": {"type": "STRING"},
+        "rooms": {"type": "INTEGER", "description": "0 tant que l'utilisateur n'a pas donné le nombre de chambres"}}}},
     "days": {"type": "ARRAY", "maxItems": 8, "description": "un seul objet par jour modifié, avec ses 5 cases ; \"\" = case inchangée",
              "items": {"type": "OBJECT", "properties": {
                  "day": {"type": "INTEGER"},
@@ -82,7 +83,7 @@ Programme d'un jour : 5 cases fixes, breakfast (petit-déjeuner), morning (matin
 - ACTIVITÉS ET TRANSFERTS (matinée, après-midi) : {" | ".join(names["activities"])}
 Si l'utilisateur demande quelque chose qui n'existe pas, propose l'option la plus proche de la liste. N'invente aucun nom. Pour vider une case, écris "{CLEAR}". Les notes manuelles (notes) sont des rappels libres : n'en ajoute que si on te le demande.
 
-N'invente jamais une information : ne remplis eventTitle que si on te le dit, et pour les chambres demande le nombre (une chambre par personne n'est pas une réponse). Un champ non mentionné reste null.
+N'invente jamais une information : ne remplis eventTitle que si on te le dit, et pour les chambres mets rooms à 0 puis demande le nombre : ne le déduis jamais du nombre de personnes. Un champ non mentionné reste null.
 
 À chaque réponse :
 - reply : ce que tu dis à l'utilisateur (confirme brièvement ce que tu viens de noter, puis pose la prochaine question).
