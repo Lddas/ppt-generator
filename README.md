@@ -41,4 +41,8 @@ cd backend && python build_slices.py   # optionnel : découpe les gros modèles,
 
 ## Déploiement
 
-Le `Dockerfile` télécharge les modèles (`backend/assets_manifest.json`), les découpe en petits fichiers (`build_slices.py`) et supprime les originaux : le serveur n'ouvre que de petits fichiers, ce qui limite la mémoire. Le build échoue tant qu'une entrée du manifeste a encore une URL `REPLACE_WITH_PRESIGNED_URL` : déposer les nouveaux modèles (Dropbox, lien `?dl=1`) puis remplacer les URL.
+1. Après avoir (re)fait les modèles : `cd backend && python build_slices.py && python make_bundle.py` crée `PPTX_PREF/templates_bundle.zip` (slices + petits modèles, environ 400 Mo).
+2. Déposer ce zip sur Dropbox, copier le lien de partage en remplaçant `dl=0` par `dl=1`, et le coller dans `backend/assets_manifest.json` (`templates_bundle.zip`).
+3. Le `Dockerfile` télécharge et décompresse le bundle au build (`fetch_assets.py`). Il échoue volontairement tant qu'une URL est encore `REPLACE_WITH_PRESIGNED_URL`.
+
+Le serveur n'ouvre que de petits fichiers : mémoire et temps de génération faibles.

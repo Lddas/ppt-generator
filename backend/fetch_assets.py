@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import urllib.request
+import zipfile
 
 ASSETS_FILE = os.path.join(os.path.dirname(__file__), 'assets_manifest.json')
 
@@ -18,7 +19,8 @@ def ensure_assets(strict=False):
 
     missing = []
     for filename, url in manifest.items():
-        if os.path.exists(filename):
+        # a .zip is a bundle (see make_bundle.py): unpacked here, so it is "there" once slices/ is
+        if os.path.exists(filename) or (filename.endswith('.zip') and os.path.isdir('slices')):
             print(f'{filename} already exists, skipping.')
             continue
 
@@ -30,6 +32,10 @@ def ensure_assets(strict=False):
         print(f'Downloading {filename}...')
         try:
             urllib.request.urlretrieve(url, filename)
+            if filename.endswith('.zip'):
+                with zipfile.ZipFile(filename) as bundle:
+                    bundle.extractall('.')
+                os.remove(filename)
             print(f'OK: {filename}')
         except Exception as e:
             print(f'Failed to download {filename}: {e}')
