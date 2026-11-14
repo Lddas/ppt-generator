@@ -115,13 +115,13 @@ function Counter({ id, value, min, max, onChange, label }: {
   const clamp = (n: number) => Math.min(max ?? Infinity, Math.max(min, n))
   return (
     <div className="flex items-center gap-2">
-      <button type="button" className="btn btn-ghost !px-0 w-11" aria-label={`Moins de ${label}`}
+      <button type="button" className="btn btn-ghost !px-0 w-12" aria-label={`Moins de ${label}`}
         onClick={() => onChange(clamp(value - 1))} disabled={value <= min}>
         <Icon name="minus" className="w-4 h-4" />
       </button>
       <input id={id} type="number" inputMode="numeric" className="field text-center" value={value} min={min} max={max}
         onChange={e => onChange(clamp(Number(e.target.value) || min))} />
-      <button type="button" className="btn btn-ghost !px-0 w-11" aria-label={`Plus de ${label}`}
+      <button type="button" className="btn btn-ghost !px-0 w-12" aria-label={`Plus de ${label}`}
         onClick={() => onChange(clamp(value + 1))} disabled={max !== undefined && value >= max}>
         <Icon name="plus" className="w-4 h-4" />
       </button>
@@ -426,7 +426,7 @@ function StepProgram({ form, set, day, setDay }: {
 
 function Summary({ form, nights, datesText, hasLogo }: { form: Form; nights: number; datesText: string; hasLogo: boolean }) {
   return (
-    <aside className="card p-5 lg:sticky lg:top-24" aria-label="Récapitulatif">
+    <aside className="card p-5 lg:sticky lg:top-28" aria-label="Récapitulatif">
       <h2 className="label !mb-4">Votre présentation</h2>
       <dl className="space-y-4 text-sm">
         <div>
@@ -603,11 +603,11 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--cream)]">
-        <div className="mx-auto flex max-w-[1180px] items-center justify-between px-5 py-3">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-5 py-3">
           <div className="flex items-center gap-3">
-            <img src="/logo_1.png" alt="Preference Events" className="h-11 w-auto mix-blend-multiply" />
+            <img src="/logo_1.png" alt="Preference Events" className="h-14 w-auto mix-blend-multiply" />
             <span className="hidden sm:block h-5 w-px bg-[var(--line)]" />
-            <span className="hidden sm:block text-sm text-[var(--muted)]">Générateur de présentations</span>
+            <span className="hidden sm:block text-base text-[var(--muted)]">Générateur de présentations</span>
           </div>
           <div className="flex items-center gap-1">
             <button type="button" className="btn btn-quiet" onClick={() => { if (confirm('Effacer le formulaire et recommencer ?')) reset() }}>
@@ -621,15 +621,15 @@ export default function App() {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-[1180px] gap-6 px-5 py-8 lg:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[200px_minmax(0,1fr)_280px]">
-        <div className="lg:sticky lg:top-24 lg:self-start">
+      <div className="mx-auto grid max-w-[1400px] gap-6 px-5 py-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[12rem_minmax(0,1fr)_19rem]">
+        <div className="lg:sticky lg:top-28 lg:self-start">
           <Stepper current={step} maxReached={maxReached} goTo={goTo} />
         </div>
 
         <main>
-          <section className="card p-6 sm:p-8 rise" key={step} aria-labelledby="step-title">
+          <section className="card p-6 sm:p-10 rise" key={step} aria-labelledby="step-title">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--burgundy)]">Étape {step + 1} sur {STEPS.length}</p>
-            <h1 id="step-title" className="font-display mt-1 text-3xl font-semibold">
+            <h1 id="step-title" className="font-display mt-1 text-4xl font-semibold">
               {['Informations sur l’événement', 'Hébergement', 'Programme', 'Votre présentation'][step]}
             </h1>
             <p className="mt-1.5 mb-7 text-[var(--muted)]">

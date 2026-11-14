@@ -25,6 +25,8 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* everything sized in rem grows with the screen: 16px on a phone, up to 19px on a big monitor */
+  font-size: clamp(16px, 0.45vw + 11.5px, 19px);
 }
 
 body {
@@ -61,8 +63,8 @@ body {
 /* ─── Form controls ─── */
 .label {
   display: block;
-  margin-bottom: 6px;
-  font-size: 12px;
+  margin-bottom: 0.4rem;
+  font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -72,9 +74,9 @@ body {
 .field,
 .select {
   width: 100%;
-  min-height: 44px;
-  padding: 10px 14px;
-  font-size: 15px;
+  min-height: 3rem;
+  padding: 0.6rem 0.95rem;
+  font-size: 1rem;
   color: var(--ink);
   background: #fff;
   border: 1px solid var(--line);
@@ -118,10 +120,10 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 20px;
-  font-size: 15px;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0 1.4rem;
+  font-size: 1rem;
   font-weight: 600;
   border-radius: var(--r-control);
   border: 1px solid transparent;
@@ -159,9 +161,9 @@ body {
 }
 
 .btn-quiet {
-  min-height: 36px;
-  padding: 0 12px;
-  font-size: 14px;
+  min-height: 2.5rem;
+  padding: 0 0.9rem;
+  font-size: 0.95rem;
   font-weight: 500;
   color: var(--burgundy);
   background: transparent;
@@ -175,8 +177,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 2.5rem;
+  height: 2.5rem;
   color: var(--muted);
   border-radius: 8px;
   cursor: pointer;
@@ -193,10 +195,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 2.2rem;
+  height: 2.2rem;
   flex: none;
-  font-size: 13px;
+  font-size: 0.9rem;
   font-weight: 600;
   border-radius: 50%;
   border: 1.5px solid var(--taupe);
@@ -221,8 +223,8 @@ body {
 /* ─── Day tabs and slots ─── */
 .day-tab {
   flex: none;
-  min-width: 84px;
-  padding: 10px 14px;
+  min-width: 6rem;
+  padding: 0.7rem 1rem;
   text-align: left;
   border: 1px solid var(--line);
   border-radius: var(--r-inner);
@@ -243,10 +245,10 @@ body {
 
 .slot-row {
   display: grid;
-  grid-template-columns: 148px 1fr auto;
-  gap: 12px;
+  grid-template-columns: 9.5rem 1fr auto;
+  gap: 0.9rem;
   align-items: center;
-  padding: 10px;
+  padding: 0.75rem;
   border-radius: var(--r-inner);
   border: 1px solid var(--line);
   background: var(--paper);

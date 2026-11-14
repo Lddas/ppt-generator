@@ -407,6 +407,7 @@ def NewSlide(index, link, outputPres):
 def set_room_count(slide, rooms):
     """Hotel slides say 'Vous aurez à votre disposition 30 chambres ...': use the requested number."""
     pattern = re.compile(r"(Vous aurez à votre disposition\s+)\d+")
+    replaced = False
     for shape in slide.shapes:
         if not shape.has_text_frame:
             continue
@@ -416,6 +417,24 @@ def set_room_count(slide, rooms):
                 paragraph.runs[0].text = pattern.sub(lambda m: m.group(1) + str(rooms), text, count=1)
                 for run in paragraph.runs[1:]:
                     run.text = ""
+                replaced = True
+    return replaced
+
+
+def add_room_count_line(slide, rooms):
+    """Hotels whose text has no 'Vous aurez à votre disposition N chambres' line get one, on the
+    slide titled LES CHAMBRES (under its text)."""
+    candidates = [s for s in slide.shapes if s.has_text_frame and len(s.text_frame.text) > 80]
+    if not candidates:
+        return
+    frame = max(candidates, key=lambda s: len(s.text_frame.text)).text_frame
+    last = frame.paragraphs[-1]._p
+    new = copy.deepcopy(last)
+    frame._txBody.append(new)
+    paragraph = frame.paragraphs[-1]
+    for run in paragraph.runs[1:]:
+        run._r.getparent().remove(run._r)
+    paragraph.runs[0].text = f"Vous aurez à votre disposition {_plural(rooms, 'chambre')}."
 
 
 def select_image_from_index(activity_label):
@@ -560,6 +579,15 @@ def _put_picture(new_slide, el, blob):
     return pic
 
 
+def _plural(count, word):
+    """'1 nuit', '2 nuits'."""
+    try:
+        n = int(count)
+    except (TypeError, ValueError):
+        return f"{count} {word}s"
+    return f"{n} {word}{'s' if n > 1 else ''}"
+
+
 def _add_cover_logo(slide):
     """Client logo on the cover: on a white rounded card above the client name."""
     path = getattr(inputs, 'input_logo_path', None)
@@ -596,7 +624,7 @@ def add_intro_slides(pasteIntoPres):
             sentence = (
                 f"{inputs.input_client} souhaite organiser un séminaire qui réunira "
                 f"{inputs.input_num_people} collaborateurs pour un moment de partage et d’échanges, "
-                f"sur {inputs.input_num_days} jours et {inputs.input_num_nights} nuits"
+                f"sur {_plural(inputs.input_num_days, 'jour')} et {_plural(inputs.input_num_nights, 'nuit')}"
             )
             if inputs.input_dates:
                 sentence += f", du {inputs.input_dates}"

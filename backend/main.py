@@ -170,14 +170,20 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
             slide_index = data[hotel_name]["index"]
             nb_slides = data[hotel_name]["nb_slides"]
             print(f"DEBUG: Adding hotel slides: {hotel_name}, index {slide_index}, nb_slides {nb_slides}")
+            room_slides, rooms_written = [], False
             for i in range(slide_index - 1, slide_index + nb_slides - 1):
                 try:
                     slide = gen.NewSlide(i, link, output_pres)
                     if h.get("rooms"):
-                        gen.set_room_count(slide, h["rooms"])
+                        rooms_written = gen.set_room_count(slide, h["rooms"]) or rooms_written
+                        if any(sh.has_text_frame and sh.text_frame.text.strip().upper() == "LES CHAMBRES" for sh in slide.shapes):
+                            room_slides.append(slide)
                 except Exception as e:
                     print(f"DEBUG: Error adding slide {i} for {hotel_name}: {e}")
                     pass
+            # No "Vous aurez à votre disposition N chambres" in the hotel text: add the line
+            if h.get("rooms") and not rooms_written and room_slides:
+                gen.add_room_count_line(room_slides[0], h["rooms"])
         
         # Force garbage collection after hotel slides
         gc.collect()
