@@ -1,5 +1,5 @@
 """Generate a sample deck and check it is structurally sound (the kind of fault that makes
-PowerPoint offer to "repair" the file): broken image links, invalid colours, duplicate ids.
+PowerPoint offer to "repair" the file): broken image links, invalid colours, duplicate ids, shapes without position.
 
     python smoke_test.py [output.pptx]
 """
@@ -35,6 +35,10 @@ def check(path):
         for colour in re.findall(r'<a:srgbClr val="([^"]*)"', xml):
             if not re.fullmatch(r"[0-9A-Fa-f]{6}", colour):
                 problems.append(f"slide {number}: invalid colour {colour!r}")
+        for shape in slide.shapes:
+            tag = shape._element.tag.split("}")[1]
+            if tag in ("sp", "pic") and shape._element.find(".//{*}xfrm") is None:
+                problems.append(f"slide {number}: shape {shape.name!r} has no position")
         ids = re.findall(r'<p:cNvPr id="(\d+)"', xml)
         if len(ids) != len(set(ids)):
             problems.append(f"slide {number}: duplicate shape ids")

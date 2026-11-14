@@ -164,8 +164,21 @@ def place(ph, x, y, w, h):
     ph.left, ph.top, ph.width, ph.height = (Emu(int(v)) for v in (x * SLIDE_W, y * SLIDE_H, w * SLIDE_W, h * SLIDE_H))
 
 
-def put_picture(ph, pic):
-    ph.insert_picture(io.BytesIO(prepared_blob(pic)))
+def put_picture(ph, pic, box=None):
+    """Fill a picture placeholder (the photo is cropped to fill it). box = (x, y, w, h) as shares
+    of the slide to use another box than the layout's: python-pptx's new picture ignores any
+    geometry set on the placeholder, so it is applied (and the crop redone) afterwards."""
+    inserted = ph.insert_picture(io.BytesIO(prepared_blob(pic)))
+    if box is None:
+        return
+    x, y, w, h = (int(v) for v in (box[0] * SLIDE_W, box[1] * SLIDE_H, box[2] * SLIDE_W, box[3] * SLIDE_H))
+    inserted.left, inserted.top, inserted.width, inserted.height = Emu(x), Emu(y), Emu(w), Emu(h)
+    image_w, image_h = inserted.image.size
+    inserted.crop_left = inserted.crop_right = inserted.crop_top = inserted.crop_bottom = 0
+    if image_w / image_h > w / h:
+        inserted.crop_left = inserted.crop_right = (1 - (w / h) / (image_w / image_h)) / 2
+    else:
+        inserted.crop_top = inserted.crop_bottom = (1 - (image_w / image_h) / (w / h)) / 2
 
 
 def put_text(ph, paragraphs, fit=False):
@@ -190,7 +203,9 @@ def put_text(ph, paragraphs, fit=False):
 def put_heading(ph, paragraphs, max_size=24):
     """Fill a small title box: it grows to two lines and the font shrinks so the text fits."""
     text = " ".join(p[0] for p in paragraphs)
-    ph.height = Emu(max(int(ph.height), int(0.14 * SLIDE_H)))
+    left, top, width, height = ph.left, ph.top, ph.width, ph.height  # inherited from the layout
+    ph.left, ph.top, ph.width = left, top, width
+    ph.height = Emu(max(int(height), int(0.14 * SLIDE_H)))
     area = (ph.width / 12700) * (ph.height / 12700)
     size = min(max_size, max(10, math.floor(math.sqrt(area / (0.8 * len(text))))))
     tf = ph.text_frame
@@ -290,16 +305,13 @@ def build(prs, layouts, old, first_of_entity):
         rest = sorted(pics[1:], key=lambda p: p.cy)
         used = {10}
         if len(rest) == 1:
-            place(ph[13], 0.81, 0.04, 0.17, 0.92)
-            slots = [13]
+            boxes = {13: (0.81, 0.04, 0.17, 0.92)}
         elif len(rest) == 2:
-            place(ph[13], 0.81, 0.04, 0.17, 0.45)
-            place(ph[15], 0.81, 0.51, 0.17, 0.45)
-            slots = [13, 15]
+            boxes = {13: (0.81, 0.04, 0.17, 0.45), 15: (0.81, 0.51, 0.17, 0.45)}
         else:
-            slots = [13, 15, 14]
-        for idx, pic in zip(slots, rest):
-            put_picture(ph[idx], pic)
+            boxes = {13: None, 15: None, 14: None}
+        for (idx, box), pic in zip(boxes.items(), rest):
+            put_picture(ph[idx], pic, box)
             used.add(idx)
         title = heads[0] if heads else None
         if body is not None:
