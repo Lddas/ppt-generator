@@ -9,3 +9,10 @@ node_modules/
 .env.production
 .DS_Store
 backend/inputs.py
+PPTX_PREF/
+backend/*.pptx
+venv/
+
+backend/slices/
+backend/*.pptx
+frontend/.env.local

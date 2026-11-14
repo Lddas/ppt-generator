@@ -254,7 +254,7 @@
     },
     "MATINEE LIBRE": {
         "ppt": "liste_ACTIVITES.pptx",
-        "index": 45,
+        "index": 80,
         "nb_slides": 1,
         "image": [8, 8]
     },
@@ -567,6 +567,12 @@
         "ppt": "liste_REPAS.pptx",
         "index": 71,
         "nb_slides": 2,
+        "image" : [8, 8]
+    },
+    "INARA CAMP": {
+        "ppt": "liste_REPAS.pptx",
+        "index": 74,
+        "nb_slides": 5,
         "image" : [8, 8]
     },
     "PETIT DEJEUNER BERBERE": {

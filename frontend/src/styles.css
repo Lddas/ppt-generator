@@ -2,5 +2,306 @@
 @tailwind components;
 @tailwind utilities;
 
-body { @apply bg-gray-50 text-gray-900; }
+/* Palette taken from the PowerPoint design (PRESENTATION MARRAKECH) */
+:root {
+  --burgundy: #5b1510;
+  --burgundy-deep: #3f0e0b;
+  --brick: #7a241b;
+  --cream: #f7f4ef;
+  --paper: #fffdfa;
+  --sand: #ebe2da;
+  --taupe: #cdb8ab;
+  --ink: #1e1513;
+  --muted: #7c6e67;
+  --line: #e4dad1;
+  --ok: #2f6b4a;
+  --danger: #a3261b;
 
+  /* Nested radii: inner radius = outer radius - padding */
+  --r-card: 20px;
+  --r-inner: 12px;
+  --r-control: 10px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--cream);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: 'Jost', 'Futura', 'Inter', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--burgundy);
+  outline-offset: 2px;
+}
+
+/* ─── Surfaces ─── */
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: 0 1px 2px rgba(30, 21, 19, 0.04), 0 8px 24px -12px rgba(30, 21, 19, 0.08);
+}
+
+.inner {
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: var(--r-inner);
+}
+
+/* ─── Form controls ─── */
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.field,
+.select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.field::placeholder {
+  color: #b3a69e;
+}
+
+.field:hover,
+.select:hover {
+  border-color: var(--taupe);
+}
+
+.field:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--burgundy);
+  box-shadow: 0 0 0 3px rgba(91, 21, 16, 0.12);
+}
+
+.select {
+  appearance: none;
+  padding-right: 38px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237c6e67' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.select:disabled {
+  color: #b3a69e;
+  cursor: not-allowed;
+  background-color: var(--cream);
+}
+
+/* ─── Buttons ─── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: var(--r-control);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  color: #fff;
+  background: var(--burgundy);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--brick);
+  box-shadow: 0 6px 18px -6px rgba(91, 21, 16, 0.5);
+}
+
+.btn-ghost {
+  color: var(--ink);
+  background: transparent;
+  border-color: var(--line);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--sand);
+}
+
+.btn-quiet {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--burgundy);
+  background: transparent;
+}
+
+.btn-quiet:hover:not(:disabled) {
+  background: rgba(91, 21, 16, 0.07);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.icon-btn:hover {
+  color: var(--danger);
+  background: rgba(163, 38, 27, 0.08);
+}
+
+/* ─── Stepper ─── */
+.step-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 50%;
+  border: 1.5px solid var(--taupe);
+  color: var(--muted);
+  background: var(--paper);
+  transition: all 0.2s;
+}
+
+.step-dot[data-state='current'] {
+  color: #fff;
+  background: var(--burgundy);
+  border-color: var(--burgundy);
+  box-shadow: 0 0 0 4px rgba(91, 21, 16, 0.12);
+}
+
+.step-dot[data-state='done'] {
+  color: var(--burgundy);
+  background: var(--sand);
+  border-color: var(--burgundy);
+}
+
+/* ─── Day tabs and slots ─── */
+.day-tab {
+  flex: none;
+  min-width: 84px;
+  padding: 10px 14px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--r-inner);
+  background: var(--paper);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.day-tab:hover {
+  border-color: var(--taupe);
+}
+
+.day-tab[aria-selected='true'] {
+  color: #fff;
+  background: var(--burgundy);
+  border-color: var(--burgundy);
+}
+
+.slot-row {
+  display: grid;
+  grid-template-columns: 148px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border-radius: var(--r-inner);
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.slot-row[data-filled='true'] {
+  background: #fff;
+  border-color: var(--taupe);
+}
+
+@media (max-width: 640px) {
+  .slot-row {
+    grid-template-columns: 1fr auto;
+  }
+  .slot-row > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ─── Progress ─── */
+@keyframes slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+.indeterminate::after {
+  content: '';
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--burgundy);
+  animation: slide 1.4s ease-in-out infinite;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rise {
+  animation: rise 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .indeterminate::after {
+    animation: none;
+  }
+}
+
+::-webkit-scrollbar {
+  height: 6px;
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--taupe);
+  border-radius: 4px;
+}
