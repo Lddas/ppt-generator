@@ -187,6 +187,20 @@ def put_text(ph, paragraphs, fit=False):
             run.font.size = Pt(size)
 
 
+def put_heading(ph, paragraphs, max_size=24):
+    """Fill a small title box: it grows to two lines and the font shrinks so the text fits."""
+    text = " ".join(p[0] for p in paragraphs)
+    ph.height = Emu(max(int(ph.height), int(0.14 * SLIDE_H)))
+    area = (ph.width / 12700) * (ph.height / 12700)
+    size = min(max_size, max(10, math.floor(math.sqrt(area / (0.8 * len(text))))))
+    tf = ph.text_frame
+    tf.clear()
+    tf.word_wrap = True
+    run = tf.paragraphs[0].add_run()
+    run.text = text
+    run.font.size = Pt(size)
+
+
 def best_images_layout(prs, pics):
     """Among the 'IMAGES n' layouts with len(pics) photo boxes, the one whose boxes look most
     like where the old photos were. Returns (layout, [pic for each placeholder idx])."""
@@ -256,7 +270,7 @@ def build(prs, layouts, old, first_of_entity):
             used = {10, 15}
             put_text(ph[15], body.paragraphs, fit=True)
             for idx, head in zip((11, 14), heads):
-                put_text(ph[idx], head.paragraphs)
+                put_heading(ph[idx], head.paragraphs)
                 used.add(idx)
             drop_unused(ph, used)
             return "place"
@@ -265,7 +279,7 @@ def build(prs, layouts, old, first_of_entity):
         used = {10, 12}
         put_text(ph[12], body.paragraphs, fit=True)
         if heads:
-            put_text(ph[11], heads[0].paragraphs)
+            put_heading(ph[11], heads[0].paragraphs)
             used.add(11)
         drop_unused(ph, used)
         return "sub-section"
@@ -296,7 +310,7 @@ def build(prs, layouts, old, first_of_entity):
             body, title = heads[1], heads[0]
         if title is not None:
             place(ph[11], 0.42, 0.07, 0.34, 0.07)
-            put_text(ph[11], title.paragraphs)
+            put_heading(ph[11], title.paragraphs)
             used.add(11)
         drop_unused(ph, used)
         return "photos-text"

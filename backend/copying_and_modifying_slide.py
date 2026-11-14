@@ -195,16 +195,26 @@ def _materialize_placeholder(el, shp, master=None):
 MAX_IMAGE_SIDE = 2000  # px; the photos of the templates are much larger than a slide needs
 
 
+def _has_alpha(im):
+    if im.mode in ("RGBA", "LA"):
+        return im.getchannel("A").getextrema()[0] < 255
+    return im.mode == "P" and "transparency" in im.info
+
+
 def _shrink(blob):
-    """Downscale a huge photo (smaller decks, less memory); small images are returned as is."""
+    """Smaller photos (smaller decks, less memory): downscale the huge ones and store opaque
+    photographic PNGs as JPEG. Small images and logos with transparency are returned as is."""
     try:
         im = Image.open(io.BytesIO(blob))
-        if max(im.size) <= MAX_IMAGE_SIDE:
-            return blob
         fmt = im.format
-        im.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.LANCZOS)
+        too_big = max(im.size) > MAX_IMAGE_SIDE
+        heavy_png = fmt == "PNG" and len(blob) > 300_000 and not _has_alpha(im)
+        if not too_big and not heavy_png:
+            return blob
+        if too_big:
+            im.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.LANCZOS)
         out = io.BytesIO()
-        if fmt == "PNG" and im.mode in ("RGBA", "LA", "P"):
+        if fmt == "PNG" and _has_alpha(im):
             im.save(out, "PNG", optimize=True)
         else:
             im.convert("RGB").save(out, "JPEG", quality=88, optimize=True)
