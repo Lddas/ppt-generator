@@ -569,6 +569,12 @@
         "nb_slides": 2,
         "image" : [8, 8]
     },
+    "INARA CAMP": {
+        "ppt": "liste_REPAS.pptx",
+        "index": 74,
+        "nb_slides": 5,
+        "image" : [8, 8]
+    },
     "PETIT DEJEUNER BERBERE": {
         "ppt": "liste_REPAS.pptx",
         "index": 2,
