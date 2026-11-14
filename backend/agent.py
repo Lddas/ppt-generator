@@ -1,0 +1,265 @@
+"""Assistant that fills the form by talking, powered by Gemini Flash.
+
+The Gemini key stays on the server (env GEMINI_API_KEY): the website code is public.
+The model answers with a JSON object: a reply to show, a patch of the form, and whether it is done.
+Everything it proposes is checked here against the real lists (hotels, restaurants, activities).
+"""
+import datetime
+import difflib
+import json
+import os
+import re
+import urllib.error
+import urllib.request
+
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+DEFAULT_MODEL = "gemini-flash-latest"  # always the current Flash; override with GEMINI_MODEL
+SLOT_KEYS = ["breakfast", "morning", "lunch", "afternoon", "dinner"]
+SLOT_LABELS = {"breakfast": "petit-déjeuner", "morning": "matinée", "lunch": "déjeuner",
+               "afternoon": "après-midi", "dinner": "dîner"}
+CLEAR = "AUCUN"  # what the model writes to empty a cell
+
+SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "reply": {"type": "STRING"},
+        "done": {"type": "BOOLEAN"},
+        "form": {
+            "type": "OBJECT",
+            "properties": {
+                "client": {"type": "STRING"},
+                "eventTitle": {"type": "STRING"},
+                "startDate": {"type": "STRING"},
+                "numDays": {"type": "INTEGER"},
+                "numNights": {"type": "INTEGER"},
+                "numPeople": {"type": "INTEGER"},
+                "hotels": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
+                    "hotelName": {"type": "STRING"}, "rooms": {"type": "INTEGER"}}}},
+                "days": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
+                    "day": {"type": "INTEGER"},
+                    **{key: {"type": "STRING"} for key in SLOT_KEYS},
+                    "notes": {"type": "ARRAY", "items": {"type": "STRING"}}}}},
+            },
+        },
+    },
+    "required": ["reply", "done"],
+}
+
+
+class AgentError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+def catalog(index, hotels):
+    """The names the agent may use, taken from index.json so they never go out of date."""
+    names = {"hotels": sorted(hotels), "breakfasts": [], "meals": [], "activities": []}
+    for name, entry in index.items():
+        ppt = entry.get("ppt")
+        if name.startswith("PETIT DEJEUNER"):
+            names["breakfasts"].append(name)
+        elif ppt == "liste_REPAS.pptx":
+            names["meals"].append(name)
+        elif ppt in ("liste_ACTIVITES.pptx", "FALSE"):
+            names["activities"].append(name)
+    for key in ("breakfasts", "meals", "activities"):
+        names[key] = sorted(set(names[key]))
+    return names
+
+
+def system_prompt(names, form, missing, today):
+    return f"""Tu es l'assistant de Preference Events (agence événementielle à Marrakech). Tu aides un collègue à remplir le formulaire qui génère une présentation PowerPoint de séminaire. Tu parles français, de façon chaleureuse, brève et naturelle (une à deux phrases), en tutoyant. Pose UNE question à la fois (deux au maximum si elles vont ensemble), dans cet ordre de priorité : client, dates d'arrivée et nombre de jours, nombre de personnes, hôtel(s) et nombre de chambres, puis le programme de chaque jour.
+
+Date du jour : {today}. Si l'utilisateur donne une date sans année, prends la prochaine occurrence à venir. Renseigne startDate au format AAAA-MM-JJ. Si l'utilisateur donne des dates de début et de fin, déduis numDays (jours) et numNights = numDays - 1.
+
+Programme d'un jour : 5 cases fixes, breakfast (petit-déjeuner), morning (matinée), lunch (déjeuner), afternoon (après-midi), dinner (dîner). Remplis les cases avec les noms EXACTS de ces listes, jamais autre chose :
+- HÔTELS : {" | ".join(names["hotels"])}
+- PETITS-DÉJEUNERS : {" | ".join(names["breakfasts"])}
+- RESTAURANTS ET SOIRÉES (déjeuner, dîner) : {" | ".join(names["meals"])}
+- ACTIVITÉS ET TRANSFERTS (matinée, après-midi) : {" | ".join(names["activities"])}
+Si l'utilisateur demande quelque chose qui n'existe pas, propose l'option la plus proche de la liste. N'invente aucun nom. Pour vider une case, écris "{CLEAR}". Les notes manuelles (notes) sont des rappels libres : n'en ajoute que si on te le demande.
+
+À chaque réponse :
+- reply : ce que tu dis à l'utilisateur (confirme brièvement ce que tu viens de noter, puis pose la prochaine question).
+- form : seulement ce qui change (pour hotels, la liste complète des hôtels ; pour days, uniquement les jours et cases modifiés, day commence à 1).
+- done : true seulement quand tout l'essentiel est rempli ET que tu as récapitulé en une phrase en demandant s'il faut ajuster quelque chose ; sinon false.
+
+État actuel du formulaire : {json.dumps(form, ensure_ascii=False)}
+Ce qu'il manque encore : {", ".join(missing) if missing else "rien d'essentiel"}"""
+
+
+def _match(value, options):
+    """The option the text refers to (exact, ignoring case/accents-free typos), or None."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    value = value.strip().upper()
+    for option in options:
+        if option.upper() == value:
+            return option
+    close = difflib.get_close_matches(value, [o.upper() for o in options], n=1, cutoff=0.8)
+    return next((o for o in options if o.upper() == close[0]), None) if close else None
+
+
+def _int(value, low, high):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if low <= number <= high else None
+
+
+def clean_patch(raw, names):
+    """Keep only what is valid. Returns (patch, rejected names)."""
+    patch, rejected = {}, []
+    raw = raw if isinstance(raw, dict) else {}
+    for key in ("client", "eventTitle"):
+        if isinstance(raw.get(key), str) and raw[key].strip():
+            patch[key] = raw[key].strip()
+    date = raw.get("startDate")
+    if isinstance(date, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        try:
+            datetime.date.fromisoformat(date)
+            patch["startDate"] = date
+        except ValueError:
+            pass
+    for key, low, high in (("numDays", 1, 8), ("numNights", 0, 9), ("numPeople", 1, 5000)):
+        number = _int(raw.get(key), low, high)
+        if number is not None:
+            patch[key] = number
+    if isinstance(raw.get("hotels"), list):
+        hotels = []
+        for item in raw["hotels"]:
+            name = _match((item or {}).get("hotelName"), names["hotels"])
+            if name is None:
+                rejected.append(str((item or {}).get("hotelName")))
+                continue
+            hotels.append({"hotelName": name, "rooms": _int((item or {}).get("rooms"), 1, 2000) or 10})
+        if hotels:
+            patch["hotels"] = hotels
+    allowed = {
+        "breakfast": names["breakfasts"] + names["activities"],
+        "morning": names["activities"] + names["breakfasts"],
+        "lunch": names["meals"] + names["activities"],
+        "afternoon": names["activities"],
+        "dinner": names["meals"] + names["activities"],
+    }
+    days = []
+    for item in raw.get("days") or []:
+        day = _int((item or {}).get("day"), 1, 8)
+        if day is None:
+            continue
+        entry = {"day": day, "slots": {}}
+        for key in SLOT_KEYS:
+            value = item.get(key)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            if value.strip().upper() == CLEAR:
+                entry["slots"][key] = ""
+                continue
+            name = _match(value, allowed[key])
+            if name is None:
+                rejected.append(value)
+            else:
+                entry["slots"][key] = name
+        if isinstance(item.get("notes"), list):
+            entry["notes"] = [n.strip() for n in item["notes"] if isinstance(n, str) and n.strip()]
+        if entry["slots"] or "notes" in entry:
+            days.append(entry)
+    if days:
+        patch["days"] = days
+    return patch, rejected
+
+
+def merge(form, patch):
+    """The form after applying the patch (same shape as the website's form)."""
+    merged = json.loads(json.dumps(form or {}))
+    for key in ("client", "eventTitle", "startDate", "numDays", "numNights", "numPeople", "hotels"):
+        if key in patch:
+            merged[key] = patch[key]
+    days = merged.setdefault("days", [])
+    wanted = merged.get("numDays") or len(days) or 1
+    while len(days) < wanted:
+        days.append({"slots": ["", "", "", "", ""], "notes": []})
+    for entry in patch.get("days", []):
+        while len(days) < entry["day"]:
+            days.append({"slots": ["", "", "", "", ""], "notes": []})
+        day = days[entry["day"] - 1]
+        day["slots"] = list(day.get("slots") or ["", "", "", "", ""])
+        for key, value in entry["slots"].items():
+            day["slots"][SLOT_KEYS.index(key)] = value
+        if "notes" in entry:
+            day["notes"] = entry["notes"]
+    return merged
+
+
+def missing_fields(form):
+    missing = []
+    if not (form.get("client") or "").strip():
+        missing.append("nom du client")
+    if not form.get("startDate"):
+        missing.append("date d'arrivée")
+    if not form.get("hotels"):
+        missing.append("hôtel")
+    for number, day in enumerate(form.get("days") or [], 1):
+        if not any(day.get("slots") or []) and not day.get("notes"):
+            missing.append(f"programme du jour {number}")
+    if not form.get("days"):
+        missing.append("programme")
+    return missing
+
+
+def call_gemini(body, api_key, model):
+    request = urllib.request.Request(
+        GEMINI_URL.format(model=model), data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=40) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", "replace")[:300]
+        if error.code in (400, 403) and "API key" in detail:
+            raise AgentError(502, "La clé Gemini est refusée. Vérifie GEMINI_API_KEY sur le serveur.")
+        if error.code == 429:
+            raise AgentError(429, "Gemini est saturé pour le moment, réessaie dans quelques secondes.")
+        raise AgentError(502, f"Gemini a répondu {error.code}.")
+    except (urllib.error.URLError, TimeoutError):
+        raise AgentError(504, "Gemini ne répond pas, réessaie dans un instant.")
+
+
+def respond(messages, form, names, today=None, api_key=None, model=None, caller=call_gemini):
+    """One turn of the conversation. messages: [{role: 'user'|'model', text}]."""
+    api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise AgentError(503, "L'assistant n'est pas configuré (clé Gemini manquante sur le serveur).")
+    today = today or datetime.date.today().isoformat()
+    turns = [m for m in messages if m.get("role") in ("user", "model") and str(m.get("text", "")).strip()][-24:]
+    while turns and turns[0]["role"] != "user":
+        turns.pop(0)
+    if not turns:
+        raise AgentError(400, "Message vide.")
+    form = form if isinstance(form, dict) else {}
+    body = {
+        "systemInstruction": {"parts": [{"text": system_prompt(names, form, missing_fields(form), today)}]},
+        "contents": [{"role": m["role"], "parts": [{"text": str(m["text"])[:2000]}]} for m in turns],
+        "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json",
+                             "responseSchema": SCHEMA, "maxOutputTokens": 1200},
+    }
+    data = caller(body, api_key, model or os.environ.get("GEMINI_MODEL", DEFAULT_MODEL))
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, TypeError):
+        raise AgentError(502, "Réponse vide de Gemini, réessaie.")
+    try:
+        answer = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip()).strip())
+    except json.JSONDecodeError:
+        answer = {"reply": text.strip(), "done": False}
+    patch, rejected = clean_patch(answer.get("form"), names)
+    merged = merge(form, patch)
+    still_missing = missing_fields(merged)
+    reply = str(answer.get("reply") or "").strip() or "Je n'ai pas bien compris, tu peux reformuler ?"
+    if rejected:
+        reply += " (Je n'ai pas trouvé : " + ", ".join(sorted(set(rejected))) + ".)"
+    return {"reply": reply, "patch": patch, "done": bool(answer.get("done")) and not still_missing,
+            "missing": still_missing}
