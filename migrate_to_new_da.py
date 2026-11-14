@@ -107,7 +107,13 @@ def extract(slide):
                 if geo[2] * geo[3] / (SLIDE_W * SLIDE_H) < LOGO_MAX_AREA:
                     continue
                 try:
-                    old.pics.append(Pic(sh.image.blob, *geo, (sh.crop_left, sh.crop_top, sh.crop_right, sh.crop_bottom)))
+                    blob, crop = sh.image.blob, (sh.crop_left, sh.crop_top, sh.crop_right, sh.crop_bottom)
+                    turn = round(getattr(sh, "rotation", 0) or 0) % 360
+                    if turn in (90, 270):
+                        # a picture turned a quarter: turn the image itself, swap its box around the centre
+                        blob, geo = rotated_blob(blob, crop, turn), turned_box(geo)
+                        crop = (0, 0, 0, 0)
+                    old.pics.append(Pic(blob, *geo, crop))
                 except Exception:
                     pass
             elif tag == "sp" and sh.has_text_frame and sh.text_frame.text.strip():
@@ -124,6 +130,28 @@ def extract(slide):
 
     walk(slide.shapes)
     return old
+
+
+def rotated_blob(blob, crop, turn):
+    """The image with its crop applied, turned by `turn` degrees clockwise (90 or 270)."""
+    im = Image.open(io.BytesIO(blob))
+    fmt = "PNG" if im.format == "PNG" or im.mode in ("RGBA", "LA", "P") else "JPEG"
+    w, h = im.size
+    left, top, right, bottom = crop
+    im = im.crop((int(left * w), int(top * h), int(w * (1 - right)), int(h * (1 - bottom))))
+    im = im.rotate(-turn, expand=True)
+    out = io.BytesIO()
+    if fmt == "JPEG":
+        im.convert("RGB").save(out, "JPEG", quality=92)
+    else:
+        im.save(out, "PNG")
+    return out.getvalue()
+
+
+def turned_box(geo):
+    left, top, width, height = geo
+    cx, cy = left + width / 2, top + height / 2
+    return int(cx - height / 2), int(cy - width / 2), height, width
 
 
 def prepared_blob(pic):
@@ -200,12 +228,15 @@ def put_text(ph, paragraphs, fit=False):
             run.font.size = Pt(size)
 
 
-def put_heading(ph, paragraphs, max_size=24):
-    """Fill a small title box: it grows to two lines and the font shrinks so the text fits."""
+def put_heading(ph, paragraphs, max_size=24, box=None):
+    """Fill a small title box: it grows to two lines and the font shrinks so the text fits.
+    box = (x, y, w, h) as shares of the slide to use another box than the layout's."""
     text = " ".join(p[0] for p in paragraphs)
     left, top, width, height = ph.left, ph.top, ph.width, ph.height  # inherited from the layout
-    ph.left, ph.top, ph.width = left, top, width
-    ph.height = Emu(max(int(height), int(0.14 * SLIDE_H)))
+    if box:
+        left, top, width, height = (int(v) for v in (box[0] * SLIDE_W, box[1] * SLIDE_H, box[2] * SLIDE_W, box[3] * SLIDE_H))
+    ph.left, ph.top, ph.width = Emu(int(left)), Emu(int(top)), Emu(int(width))
+    ph.height = Emu(max(int(height), int(0.14 * SLIDE_H))) if not box else Emu(int(height))
     area = (ph.width / 12700) * (ph.height / 12700)
     size = min(max_size, max(10, math.floor(math.sqrt(area / (0.8 * len(text))))))
     tf = ph.text_frame
@@ -214,6 +245,27 @@ def put_heading(ph, paragraphs, max_size=24):
     run = tf.paragraphs[0].add_run()
     run.text = text
     run.font.size = Pt(size)
+
+
+def is_banner(pic):
+    """A small wide picture is a title drawn as an image (e.g. 'A VOTRE ARRIVÉE'), not a photo."""
+    share = pic.area / (SLIDE_W * SLIDE_H)
+    return share < 0.10 and pic.width / pic.height >= 2.2
+
+
+def add_banners(slide, body, banners, col_x, col_w, top=0.06):
+    """Title images go at the top of the text column; the text box moves down below them."""
+    y = top
+    for banner in banners:
+        width = col_w * SLIDE_W
+        height = width * banner.height / banner.width
+        slide.shapes.add_picture(io.BytesIO(prepared_blob(banner)), Emu(int(col_x * SLIDE_W)),
+                                 Emu(int(y * SLIDE_H)), Emu(int(width)), Emu(int(height)))
+        y += height / SLIDE_H + 0.02
+    if body is not None and banners and int(y * SLIDE_H) > body.top:
+        left, bottom, width = body.left, body.top + body.height, body.width
+        body.left, body.top, body.width = left, Emu(int(y * SLIDE_H)), width
+        body.height = Emu(max(int(0.1 * SLIDE_H), int(bottom - y * SLIDE_H)))
 
 
 def best_images_layout(prs, pics):
@@ -244,6 +296,10 @@ def build(prs, layouts, old, first_of_entity):
     """Returns the name of the rule used."""
     pics = sorted(old.pics, key=lambda p: -p.area)
     texts = old.texts
+    banners = []
+    if texts and len(pics) > 1 and any(not is_banner(p) for p in pics):
+        banners = [p for p in pics if is_banner(p)]
+        pics = [p for p in pics if not is_banner(p)]
     n = len(pics)
     body = max(texts, key=lambda t: t.chars) if texts and (len(texts) > 1 or texts[0].chars >= LONG_TEXT) else None
     heads = sorted([t for t in texts if t is not body], key=lambda t: (-t.size, t.top))
@@ -284,9 +340,12 @@ def build(prs, layouts, old, first_of_entity):
             put_picture(ph[10], pics[0])
             used = {10, 15}
             put_text(ph[15], body.paragraphs, fit=True)
+            # two stacked titles (e.g. "HÉBERGEMENT" then the hotel name) above the text
+            boxes = {11: (0.68, 0.12, 0.23, 0.07), 14: (0.68, 0.19, 0.23, 0.11)}
             for idx, head in zip((11, 14), heads):
-                put_heading(ph[idx], head.paragraphs)
+                put_heading(ph[idx], head.paragraphs, box=boxes[idx] if len(heads) > 1 else None)
                 used.add(idx)
+            add_banners(slide, ph[15], banners, 0.68, 0.23)
             drop_unused(ph, used)
             return "place"
         slide, ph = new(L_SUB_LEFT if pics[0].cx < 0.5 else L_SUB_RIGHT)
@@ -296,6 +355,8 @@ def build(prs, layouts, old, first_of_entity):
         if heads:
             put_heading(ph[11], heads[0].paragraphs)
             used.add(11)
+        left = pics[0].cx < 0.5
+        add_banners(slide, ph[12], banners, 0.77 if left else 0.03, 0.20)
         drop_unused(ph, used)
         return "sub-section"
 
@@ -324,6 +385,8 @@ def build(prs, layouts, old, first_of_entity):
             place(ph[11], 0.42, 0.07, 0.34, 0.07)
             put_heading(ph[11], title.paragraphs)
             used.add(11)
+        if 12 in ph:
+            add_banners(slide, ph[12], banners, 0.42, 0.34)
         drop_unused(ph, used)
         return "photos-text"
 
