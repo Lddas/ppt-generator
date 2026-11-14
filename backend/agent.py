@@ -21,30 +21,29 @@ SLOT_LABELS = {"breakfast": "petit-déjeuner", "morning": "matinée", "lunch": "
                "afternoon": "après-midi", "dinner": "dîner"}
 CLEAR = "AUCUN"  # what the model writes to empty a cell
 
+_FORM_PROPERTIES = {
+    "client": {"type": "STRING"},
+    "eventTitle": {"type": "STRING"},
+    "startDate": {"type": "STRING", "description": "AAAA-MM-JJ, null si inchangé"},
+    "numDays": {"type": "INTEGER"},
+    "numNights": {"type": "INTEGER"},
+    "numPeople": {"type": "INTEGER"},
+    "hotels": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
+        "hotelName": {"type": "STRING"}, "rooms": {"type": "INTEGER"}}}},
+    "days": {"type": "ARRAY", "maxItems": 8, "description": "un seul objet par jour modifié, avec ses 5 cases ; \"\" = case inchangée",
+             "items": {"type": "OBJECT", "properties": {
+                 "day": {"type": "INTEGER"},
+                 **{key: {"type": "STRING"} for key in SLOT_KEYS},
+                 "notes": {"type": "ARRAY", "items": {"type": "STRING"}}},
+                 "required": ["day", *SLOT_KEYS]}},
+}
+# Flat on purpose: a nested "form" object made the model drift inside string fields.
+# Every field is required (null / empty = unchanged), otherwise the model closes the JSON early.
 SCHEMA = {
     "type": "OBJECT",
-    "properties": {
-        "reply": {"type": "STRING"},
-        "done": {"type": "BOOLEAN"},
-        "form": {
-            "type": "OBJECT",
-            "properties": {
-                "client": {"type": "STRING"},
-                "eventTitle": {"type": "STRING"},
-                "startDate": {"type": "STRING"},
-                "numDays": {"type": "INTEGER"},
-                "numNights": {"type": "INTEGER"},
-                "numPeople": {"type": "INTEGER"},
-                "hotels": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
-                    "hotelName": {"type": "STRING"}, "rooms": {"type": "INTEGER"}}}},
-                "days": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
-                    "day": {"type": "INTEGER"},
-                    **{key: {"type": "STRING"} for key in SLOT_KEYS},
-                    "notes": {"type": "ARRAY", "items": {"type": "STRING"}}}}},
-            },
-        },
-    },
-    "required": ["reply", "done"],
+    "properties": {"reply": {"type": "STRING"}, "done": {"type": "BOOLEAN"},
+                   **{key: {**value, "nullable": True} for key, value in _FORM_PROPERTIES.items()}},
+    "required": ["reply", "done", *_FORM_PROPERTIES],
 }
 
 
@@ -83,9 +82,11 @@ Programme d'un jour : 5 cases fixes, breakfast (petit-déjeuner), morning (matin
 - ACTIVITÉS ET TRANSFERTS (matinée, après-midi) : {" | ".join(names["activities"])}
 Si l'utilisateur demande quelque chose qui n'existe pas, propose l'option la plus proche de la liste. N'invente aucun nom. Pour vider une case, écris "{CLEAR}". Les notes manuelles (notes) sont des rappels libres : n'en ajoute que si on te le demande.
 
+N'invente jamais une information : ne remplis eventTitle que si on te le dit, et pour les chambres demande le nombre (une chambre par personne n'est pas une réponse). Un champ non mentionné reste null.
+
 À chaque réponse :
 - reply : ce que tu dis à l'utilisateur (confirme brièvement ce que tu viens de noter, puis pose la prochaine question).
-- form : seulement ce qui change (pour hotels, la liste complète des hôtels ; pour days, uniquement les jours et cases modifiés, day commence à 1).
+- les autres champs (client, startDate, numDays, numNights, numPeople, hotels, days) : seulement ce qui change, directement à la racine du JSON (pour hotels, la liste complète des hôtels ; pour days, uniquement les jours et cases modifiés, day commence à 1).
 - done : true seulement quand tout l'essentiel est rempli ET que tu as récapitulé en une phrase en demandant s'il faut ajuster quelque chose ; sinon false.
 
 État actuel du formulaire : {json.dumps(form, ensure_ascii=False)}
@@ -274,8 +275,10 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
     try:
         answer = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip()).strip())
     except json.JSONDecodeError:
+        if text.lstrip().startswith(("{", "[")):  # truncated JSON: never show it to the user
+            raise AgentError(502, "Réponse illisible de Gemini, réessaie ou reformule.")
         answer = {"reply": text.strip(), "done": False}
-    patch, rejected = clean_patch(answer.get("form"), names)
+    patch, rejected = clean_patch(answer["form"] if isinstance(answer.get("form"), dict) else answer, names)
     merged = merge(form, patch)
     still_missing = missing_fields(merged)
     reply = str(answer.get("reply") or "").strip() or "Je n'ai pas bien compris, tu peux reformuler ?"
