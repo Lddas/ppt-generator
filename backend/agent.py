@@ -10,10 +10,12 @@ import json
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-DEFAULT_MODEL = "gemini-flash-latest"  # always the current Flash; override with GEMINI_MODEL
+DEFAULT_MODEL = "gemini-3.5-flash"  # override with GEMINI_MODEL
+FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"]  # when Google is overloaded
 SLOT_KEYS = ["breakfast", "morning", "lunch", "afternoon", "dinner"]
 SLOT_LABELS = {"breakfast": "petit-déjeuner", "morning": "matinée", "lunch": "déjeuner",
                "afternoon": "après-midi", "dinner": "dîner"}
@@ -118,10 +120,11 @@ def clean_patch(raw, names):
         if isinstance(raw.get(key), str) and raw[key].strip():
             patch[key] = raw[key].strip()
     date = raw.get("startDate")
-    if isinstance(date, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+    found = re.search(r"\d{4}-\d{2}-\d{2}", date) if isinstance(date, str) else None  # tolerate text around it
+    if found:
         try:
-            datetime.date.fromisoformat(date)
-            patch["startDate"] = date
+            datetime.date.fromisoformat(found.group())
+            patch["startDate"] = found.group()
         except ValueError:
             pass
     for key, low, high in (("numDays", 1, 8), ("numNights", 0, 9), ("numPeople", 1, 5000)):
@@ -210,22 +213,35 @@ def missing_fields(form):
     return missing
 
 
+def _call_once(body, api_key, model):
+    url = GEMINI_URL.format(model=model)
+    headers = {"Content-Type": "application/json"}
+    if api_key.startswith("AIza"):
+        headers["x-goog-api-key"] = api_key
+    else:  # newer key formats (AQ.…) are only accepted as a query parameter
+        url += "?key=" + urllib.parse.quote(api_key, safe="")
+    request = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+    with urllib.request.urlopen(request, timeout=40) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def call_gemini(body, api_key, model):
-    request = urllib.request.Request(
-        GEMINI_URL.format(model=model), data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json", "x-goog-api-key": api_key}, method="POST")
-    try:
-        with urllib.request.urlopen(request, timeout=40) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", "replace")[:300]
-        if error.code in (400, 403) and "API key" in detail:
-            raise AgentError(502, "La clé Gemini est refusée. Vérifie GEMINI_API_KEY sur le serveur.")
-        if error.code == 429:
-            raise AgentError(429, "Gemini est saturé pour le moment, réessaie dans quelques secondes.")
-        raise AgentError(502, f"Gemini a répondu {error.code}.")
-    except (urllib.error.URLError, TimeoutError):
-        raise AgentError(504, "Gemini ne répond pas, réessaie dans un instant.")
+    """Calls the model; when Google is overloaded (429/500/503/404) tries the next Flash."""
+    last = None
+    for candidate in [model] + [m for m in FALLBACK_MODELS if m != model]:
+        try:
+            return _call_once(body, api_key, candidate)
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", "replace")[:300]
+            if error.code in (400, 403) and "API key" in detail:
+                raise AgentError(502, "La clé Gemini est refusée. Vérifie GEMINI_API_KEY sur le serveur.")
+            last = AgentError(429 if error.code == 429 else 502, "Gemini est saturé pour le moment, réessaie dans quelques secondes."
+                              if error.code in (429, 503) else f"Gemini a répondu {error.code}.")
+            if error.code not in (404, 429, 500, 503):
+                raise last
+        except (urllib.error.URLError, TimeoutError):
+            last = AgentError(504, "Gemini ne répond pas, réessaie dans un instant.")
+    raise last
 
 
 def respond(messages, form, names, today=None, api_key=None, model=None, caller=call_gemini):
@@ -244,11 +260,15 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
         "systemInstruction": {"parts": [{"text": system_prompt(names, form, missing_fields(form), today)}]},
         "contents": [{"role": m["role"], "parts": [{"text": str(m["text"])[:2000]}]} for m in turns],
         "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json",
-                             "responseSchema": SCHEMA, "maxOutputTokens": 1200},
+                             "responseSchema": SCHEMA, "maxOutputTokens": 1500,
+                             "thinkingConfig": {"thinkingLevel": "low"}},
     }
     data = caller(body, api_key, model or os.environ.get("GEMINI_MODEL", DEFAULT_MODEL))
     try:
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        parts = data["candidates"][0]["content"]["parts"]
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+        if not text.strip():
+            raise KeyError("text")
     except (KeyError, IndexError, TypeError):
         raise AgentError(502, "Réponse vide de Gemini, réessaie.")
     try:
