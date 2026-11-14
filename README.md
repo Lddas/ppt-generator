@@ -42,7 +42,7 @@ cd backend && python build_slices.py   # optionnel : découpe les gros modèles,
 ## Déploiement
 
 1. Après avoir (re)fait les modèles : `cd backend && python build_slices.py && python make_bundle.py` crée `PPTX_PREF/templates_bundle.zip` (slices + petits modèles, environ 400 Mo).
-2. Déposer ce zip sur Dropbox, copier le lien de partage en remplaçant `dl=0` par `dl=1`, et le coller dans `backend/assets_manifest.json` (`templates_bundle.zip`).
+2. Déposer ce zip (ou le dossier décompressé, un lien de dossier en `dl=1` donne aussi un zip) sur Dropbox, copier le lien de partage en remplaçant `dl=0` par `dl=1`, et le coller dans `backend/assets_manifest.json` (`templates_bundle.zip`).
 3. Le `Dockerfile` télécharge et décompresse le bundle au build (`fetch_assets.py`). Il échoue volontairement tant qu'une URL est encore `REPLACE_WITH_PRESIGNED_URL`.
 
 Le serveur n'ouvre que de petits fichiers : mémoire et temps de génération faibles.

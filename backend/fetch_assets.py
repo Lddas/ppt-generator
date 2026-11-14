@@ -2,9 +2,28 @@ import os
 import sys
 import json
 import urllib.request
+import shutil
 import zipfile
 
 ASSETS_FILE = os.path.join(os.path.dirname(__file__), 'assets_manifest.json')
+
+
+def unpack_bundle(zip_path):
+    """Unpack the templates bundle here. A Dropbox *folder* link (dl=1) downloads a zip of the
+    folder, which may or may not have the folder itself as its top level: find slices/ either way."""
+    tmp = 'bundle_tmp'
+    with zipfile.ZipFile(zip_path) as bundle:
+        bundle.extractall(tmp)
+    os.remove(zip_path)
+    root = next((r for r, dirs, _ in os.walk(tmp) if 'slices' in dirs), None)
+    if root is None:
+        shutil.rmtree(tmp)
+        raise RuntimeError('no slices/ folder found in the bundle')
+    for name in os.listdir(root):
+        if os.path.exists(name):
+            shutil.rmtree(name) if os.path.isdir(name) else os.remove(name)
+        shutil.move(os.path.join(root, name), name)
+    shutil.rmtree(tmp)
 
 
 def ensure_assets(strict=False):
@@ -33,9 +52,7 @@ def ensure_assets(strict=False):
         try:
             urllib.request.urlretrieve(url, filename)
             if filename.endswith('.zip'):
-                with zipfile.ZipFile(filename) as bundle:
-                    bundle.extractall('.')
-                os.remove(filename)
+                unpack_bundle(filename)
             print(f'OK: {filename}')
         except Exception as e:
             print(f'Failed to download {filename}: {e}')
