@@ -85,14 +85,13 @@ def simplify_error_message(error: Exception) -> str:
 def write_inputs_py(tmp_dir: str, payload: dict) -> None:
     inputs_path = os.path.join(tmp_dir, "inputs.py")
     with open(inputs_path, "w", encoding="utf-8") as f:
-        f.write(f'input_0_A = "{payload["logo_path"]}"\n')
-        f.write(f'input_0_B = "{payload["dates"]}"\n')
-
-        f.write(f'input_1_A = "{payload["client"]}"\n')
-        f.write(f'input_1_B = "{payload["num_people"]}"\n')
-        f.write(f'input_1_C = "{payload["num_days"]}"\n')
-        f.write(f'input_1_D = "{payload["num_nights"]}"\n')
-        f.write(f'input_1_E = "Du {payload["dates"]}"\n')
+        f.write(f'input_client = "{payload["client"]}"\n')
+        f.write(f'input_event_title = "{payload["event_title"]}"\n')
+        f.write(f'input_dates = "{payload["dates"]}"\n')
+        f.write(f'input_num_people = "{payload["num_people"]}"\n')
+        f.write(f'input_num_days = "{payload["num_days"]}"\n')
+        f.write(f'input_num_nights = "{payload["num_nights"]}"\n')
+        f.write(f'input_logo_path = "{payload["logo_path"]}"\n')
 
         # Hotel rooms mapping like in the desktop UI
         for hotel in payload.get("hotels", []):
@@ -102,7 +101,6 @@ def write_inputs_py(tmp_dir: str, payload: dict) -> None:
                 f.write(f'input_koutoubia_5 = "{rooms}"\n')
             elif "SOFITEL" in name:
                 f.write(f'input_sofitel_3 = "{rooms}"\n')
-            # else: other hotels currently do not have direct input bindings
 
 
 def load_index_json(work_dir: str = ".") -> dict:
@@ -136,18 +134,15 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         data = load_index_json(".")
 
         output_pres = Presentation()
-        output_pres.slide_width = Inches(13.33)
-        output_pres.slide_height = Inches(7.5)
+        # Same size as the PRESENTATION_MARRAKECH design file (16:9)
+        output_pres.slide_width = 12192000
+        output_pres.slide_height = 6858000
         
         # Force garbage collection after setup
         gc.collect()
 
-        # First slides
-        for i in range(1, 7):
-            try:
-                gen.NewSlide(i, "Slides_DEBUT_FIN.pptx", output_pres)
-            except Exception:
-                pass
+        # First slides: cover, project, Marrakech, practical info
+        gen.add_intro_slides(output_pres)
         
         # Force garbage collection after first slides
         gc.collect()
@@ -177,7 +172,9 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
             print(f"DEBUG: Adding hotel slides: {hotel_name}, index {slide_index}, nb_slides {nb_slides}")
             for i in range(slide_index - 1, slide_index + nb_slides - 1):
                 try:
-                    gen.NewSlide(i, link, output_pres)
+                    slide = gen.NewSlide(i, link, output_pres)
+                    if h.get("rooms"):
+                        gen.set_room_count(slide, h["rooms"])
                 except Exception as e:
                     print(f"DEBUG: Error adding slide {i} for {hotel_name}: {e}")
                     pass
@@ -188,16 +185,15 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         # Agenda
         # dayPlans is a list of {date, steps}
         activities_by_day = [dp.get("steps", []) for dp in payload.get("dayPlans", [])]
+        day_dates = [dp.get("date", "") for dp in payload.get("dayPlans", [])]
         print(f"DEBUG: Activities by day: {activities_by_day}")
-        # Preserve legacy extra tail element behavior
-        activities_by_day.append([])
-        gen.make_agenda(output_pres, activities_by_day)
+        gen.make_agenda(output_pres, activities_by_day, day_dates)
         
         # Force garbage collection after agenda
         gc.collect()
 
-        # Slide for flights
-        gen.NewSlide(119, "liste_ACTIVITES.pptx", output_pres)
+        # Slide for flights (form to complete by hand)
+        gen.add_transport_slide(output_pres)
 
         # Manual notes slides (before day activities)
         for day_index, day_data in enumerate(payload.get("dayPlans", [])):
@@ -212,16 +208,15 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
                         pass
 
         # Inter-days and activities
-        for day_index, day_plan in enumerate(activities_by_day[:-1]):
+        for day_index, day_plan in enumerate(activities_by_day):
             day_date = payload.get("dayPlans", [{}])[day_index].get("date", "")
 
-            # Slides between days based on number of steps
-            if len(day_plan) in (2, 3, 4, 5, 6):
-                mapping = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
+            # Day slide (label + photo for each step)
+            if len(day_plan) >= 2:
                 try:
-                    gen.CopyAndModifySlide(mapping[len(day_plan)], output_pres, day_plan, day_index + 1, day_date)
-                except Exception:
-                    pass
+                    gen.add_day_slide(output_pres, day_plan, day_index + 1, day_date)
+                except Exception as e:
+                    print(f"DEBUG: Error adding day slide {day_index + 1}: {e}")
 
             # Copy referenced slides for each step
             for etape in day_plan:
@@ -248,11 +243,7 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
             gc.collect()
 
         # Last slides
-        for i in range(8, 17):
-            try:
-                gen.NewSlide(i, "Slides_DEBUT_FIN.pptx", output_pres)
-            except Exception:
-                pass
+        gen.add_end_slides(output_pres)
         
         # Force garbage collection before final save
         gc.collect()
@@ -271,6 +262,7 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         
         return result
     finally:
+        gen.clear_cache()
         # Restore original working directory
         os.chdir(original_cwd)
 
@@ -290,6 +282,7 @@ app.add_middleware(
 @app.post("/generate")
 async def generate(
     client: str = Form(...),
+    eventTitle: str = Form(""),
     dates: str = Form(...),
     numDays: int = Form(...),
     numNights: int = Form(...),
@@ -325,6 +318,7 @@ async def generate(
 
     payload = {
         "client": client,
+        "event_title": eventTitle,
         "dates": dates,
         "num_days": str(numDays),
         "num_nights": str(numNights),
