@@ -7,7 +7,7 @@ from typing import List
 
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 
 # Reuse existing generation logic (now in same directory)
 import copying_and_modifying_slide as gen
@@ -184,7 +184,9 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
 
         # Agenda
         # dayPlans is a list of {date, steps}
-        activities_by_day = [dp.get("steps", []) for dp in payload.get("dayPlans", [])]
+        # A day is either 5 fixed cells (breakfast, morning, lunch, afternoon, dinner; "" = empty)
+        # or, for older clients, a plain list of steps
+        activities_by_day = [dp.get("slots") or dp.get("steps", []) for dp in payload.get("dayPlans", [])]
         day_dates = [dp.get("date", "") for dp in payload.get("dayPlans", [])]
         print(f"DEBUG: Activities by day: {activities_by_day}")
         gen.make_agenda(output_pres, activities_by_day, day_dates)
@@ -212,14 +214,15 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
             day_date = payload.get("dayPlans", [{}])[day_index].get("date", "")
 
             # Day slide (label + photo for each step)
-            if len(day_plan) >= 2:
+            day_plan = [step for step in day_plan if step] if not payload["dayPlans"][day_index].get("slots") else day_plan
+            if len([step for step in day_plan if step]) >= 1:
                 try:
                     gen.add_day_slide(output_pres, day_plan, day_index + 1, day_date)
                 except Exception as e:
                     print(f"DEBUG: Error adding day slide {day_index + 1}: {e}")
 
             # Copy referenced slides for each step
-            for etape in day_plan:
+            for etape in [step for step in day_plan if step]:
                 print(f"DEBUG: Processing activity: '{etape}'")
                 if etape not in data:
                     print(f"DEBUG: Activity '{etape}' not found in index.json")
@@ -357,8 +360,10 @@ async def generate(
     sanitized_client = sanitized_client.replace(' ', '_')
     filename = f"presentation_marrakech_{sanitized_client}.pptx"
     
-    return StreamingResponse(
-        io.BytesIO(pptx_bytes),
+    # Not a StreamingResponse over BytesIO: iterating a BytesIO yields one chunk per b"\n",
+    # i.e. thousands of tiny chunks for a binary file
+    return Response(
+        content=pptx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"'

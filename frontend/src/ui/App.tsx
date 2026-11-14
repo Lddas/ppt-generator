@@ -1,889 +1,719 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import Icon from './Icon'
+import {
+  DayPlan, GROUPS, HOTEL_OPTIONS, HotelEntry, SLOTS, dayLabel, datesLabel, emptyDay,
+} from './data'
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
 const WEBSITE_PASSWORD = 'PREF-2025'
+const DRAFT_KEY = 'pref-ppt-draft-v1'
+const AUTH_KEY = 'pref-ppt-auth'
 
-const HOTEL_OPTIONS = [
-  "BARCELO PALMERAIE", "BIVOUAC SOUS LES ETOILES", "DAR SABRA",
-  "DOMAINE DE LA ROSERAIE", "ES SAADI", "FELLAH", "HIVERNAGE",
-  "HOTEL DU GOLF, PICKALBATROS", "HOTEL IBEROSTAR", "HOTEL RADISSON",
-  "INARA CAMP", "JARDINS DE LA KOUTOUBIA", "KASBAH D'IF",
-  "KENZI ROSE GARDEN", "MAMOUNIA", "MOVENPICK", "PALAIS RONSARD HOTEL",
-  "PARK HYATT", "PURE HOUSE", "RIAD AL JAZIRA",
-  "SOFITEL MARRAKECH PALAIS IMPERIAL", "TIGMIZA", "VILLA ALBAICIN", "VILLA ANTHEA",
+const STEPS = [
+  { label: 'Événement', hint: 'Client et dates' },
+  { label: 'Hébergement', hint: 'Hôtels et chambres' },
+  { label: 'Programme', hint: 'Jour par jour' },
+  { label: 'Génération', hint: 'Vérifier et télécharger' },
 ]
 
-const RESTAURANT_OPTIONS = Array.from(new Set([
-  "AFTER AU BABOUCHKA", "BO ZIN", "CASINO", "DAR CHERIFA", "DAR MOHA",
-  "DAR SOUKKAR", "DAR ZELLIJ", "DEJEUNER A L'HOTEL", "DEJEUNER AU DADA",
-  "DINER A L'HOTEL", "DINER PALAIS RONSARD", "EPICURIEN", "FLOUKA",
-  "JARDIN LOTUS", "KABANA", "KASBAH BELDI DEJEUNER ET DETENTE", "KOYA",
-  "KSAR EL HAMRA", "LA MAISON ARABE", "LA PAUSE", "LODGE DU DESERT",
-  "LOTUS CLUB", "NARWANA", "NOUBA", "NOMAD ROOFTOP", "PALAIS GHARNATA",
-  "PALAIS JAD MAHAL", "SOIREE BELDI COUNTRY CLUB",
-  "SOIREE BLANCHE DANS LE DESERT D'AGAFAY", "SOIREE CAMPEMENT DAR CAID PALMERAIE",
-  "SOIREE CAMPEMENT PALMERAIE", "SOIREE DANS LE DESERT",
-  "TERRASSE DES EPICES", "TERRES AMANAR", "VERGER PALAIS RONSARD"
-])).sort()
+const STAGES = [
+  'Préparation du modèle…',
+  'Assemblage des hôtels…',
+  'Construction du programme…',
+  'Finalisation du fichier…',
+]
 
-const CATEGORY_OPTIONS: Record<string, string[]> = {
-  "Divers": ["ARRIVEE", "DEPART", "DEPART AEROPORT EN 4X4"],
-  "Petit Déjeuner": ["PETIT DEJEUNER A L'HOTEL", "PETIT DEJEUNER BELDI COUNTRY CLUB", "PETIT DEJEUNER BERBERE"].sort(),
-  "Restaurants": RESTAURANT_OPTIONS,
-  "Activité": ["ACTIVITES A LA CARTE", "AMANAR", "APRES MIDI DE REUNION", "APRES MIDI LIBRE", "ATELIER CALIGRAPHIE", "ATELIER POTERIE", "CHALLENGE CAROSSA", "CHOIX D'ACTIVITES", "COURS DE CUISINE CHEF TARIK", "COURS DE CUISINE MEDINA", "DECOUVERTE DES SOUKS", "DETENTE BELDI COUNTRY CLUB", "EXCURSION EN 4X4", "INARA CAMP", "JOURNEE DE REUNION", "KARTING", "LODGE DU DESERT", "MATINEE DE REUNION", "MATINEE LIBRE", "MEDERSA BEN YOUSSEF", "MONTGOLFIERE", "MUSEE YSL ET JARDINS MAJORELLES", "OLYMPIADES BERBERES", "PALAIS DE LA BAHIA", "QUAD", "QUAD ET BUGGY A AGAFAY", "QUAD ET BUGGY AUTOUR DU LAC", "RALLYE KASBAH EXPRESS", "SPA", "TRANSFERT EN CALECHE", "TREK DANS L'ATLAS AVEC DEJEUNER A LA KASBAH DU TOUBKAL", "TREK DANS L'ATLAS AVEC DEJEUNER CHEZ L'HABITANT", "YOGA"].sort(),
+type Form = {
+  client: string
+  eventTitle: string
+  startDate: string
+  datesOverride: string | null
+  numDays: number
+  numNights: number | null
+  numPeople: number
+  hotels: HotelEntry[]
+  days: DayPlan[]
 }
 
-const CATEGORY_ICONS: Record<string, string> = {
-  "Divers": "✈",
-  "Petit Déjeuner": "☀",
-  "Restaurants": "🍽",
-  "Activité": "⛰",
+const initialForm = (): Form => ({
+  client: '',
+  eventTitle: '',
+  startDate: '',
+  datesOverride: null,
+  numDays: 3,
+  numNights: null,
+  numPeople: 20,
+  hotels: [{ hotelName: HOTEL_OPTIONS[0], rooms: 10 }],
+  days: [emptyDay(), emptyDay(), emptyDay()],
+})
+
+function loadDraft(): Form {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (raw) {
+      const parsed = { ...initialForm(), ...JSON.parse(raw) }
+      if (Array.isArray(parsed.days) && Array.isArray(parsed.hotels)) return parsed
+    }
+  } catch {
+    /* ignore a broken draft */
+  }
+  return initialForm()
 }
 
-type HotelEntry = { hotelName: string; rooms: number }
-type DayStep = {
-  id: string
-  category: string
-  activity: string
-  isManual?: boolean
-  manualText?: string
-}
-type DayPlan = { date: string; steps: DayStep[] }
-
-const STEPS = ['Informations', 'Hôtels', 'Programme', 'Générer']
-const STEP_ICONS = ['📋', '🏨', '📅', '✨']
-
-function WizardNav({ current, goTo, maxReached }: { current: number; goTo: (n: number) => void; maxReached: number }) {
-  return (
-    <div className="flex items-center justify-center gap-0 mb-10">
-      {STEPS.map((label, i) => (
-        <React.Fragment key={i}>
-          {i > 0 && (
-            <div className={`h-0.5 w-12 sm:w-20 transition-all duration-500 ${
-              i <= current ? 'step-connector' : 'bg-gray-200'
-            }`} />
-          )}
-          <button
-            type="button"
-            onClick={() => i <= maxReached && goTo(i)}
-            className="wizard-step group"
-            disabled={i > maxReached}
-          >
-            <div className={`wizard-step-dot ${
-              i === current ? 'active' : i < current ? 'completed' : 'inactive'
-            }`}>
-              {i < current ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                </svg>
-              ) : (
-                <span>{STEP_ICONS[i]}</span>
-              )}
-            </div>
-            <span className={`mt-2 text-xs font-medium transition-colors hidden sm:block ${
-              i === current ? 'text-[#C45B28]' : i < current ? 'text-[#C45B28]/60' : 'text-gray-400'
-            }`}>
-              {label}
-            </span>
-          </button>
-        </React.Fragment>
-      ))}
-    </div>
-  )
-}
-
-function SectionHeader({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
-  return (
-    <div className="mb-6">
-      <div className="flex items-center gap-3 mb-1">
-        <span className="text-2xl">{icon}</span>
-        <h2 className="font-display text-2xl font-semibold text-[#2C1810]">{title}</h2>
-      </div>
-      {subtitle && <p className="text-sm text-[#8C7E74] ml-11">{subtitle}</p>}
-    </div>
-  )
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <span className="block text-xs font-semibold uppercase tracking-wider text-[#8C7E74] mb-1.5">{children}</span>
-}
-
-export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [password, setPassword] = useState("")
-  const [passwordError, setPasswordError] = useState("")
-  const [loginShake, setLoginShake] = useState(false)
-
-  const [wizardStep, setWizardStep] = useState(0)
-  const [maxReached, setMaxReached] = useState(0)
-
-  const [client, setClient] = useState("")
-  const [eventTitle, setEventTitle] = useState("")
-  const [dates, setDates] = useState("")
-  const [numDays, setNumDays] = useState(2)
-  const [numNights, setNumNights] = useState(1)
-  const [numPeople, setNumPeople] = useState(10)
-  const [logoFile, setLogoFile] = useState<File | null>(null)
-  const [logoPreview, setLogoPreview] = useState<string | null>(null)
-
-  const [hotels, setHotels] = useState<HotelEntry[]>([
-    { hotelName: HOTEL_OPTIONS[0], rooms: 1 },
-  ])
-
-  const [dayPlans, setDayPlans] = useState<DayPlan[]>([])
-  const [showManualNoteModal, setShowManualNoteModal] = useState<{ dayIndex: number } | null>(null)
-  const [manualNoteText, setManualNoteText] = useState("")
-  const [expandedDay, setExpandedDay] = useState<number | null>(0)
-
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
-
-  React.useEffect(() => {
-    setDayPlans(prev => {
-      const newPlans = Array.from({ length: numDays }, (_, i) =>
-        prev[i] || { date: "", steps: [] }
-      )
-      return newPlans
+/** Convert any image to PNG: the backend only reads JPEG/PNG (not WEBP/SVG). */
+async function toPng(file: File): Promise<File> {
+  if (file.type === 'image/png' || file.type === 'image/jpeg') return file
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image()
+      el.onload = () => resolve(el)
+      el.onerror = () => reject(new Error('Format d’image non supporté. Utilisez un PNG ou un JPEG.'))
+      el.src = url
     })
-  }, [numDays])
-
-  function goToStep(n: number) {
-    setWizardStep(n)
-    if (n > maxReached) setMaxReached(n)
+    const canvas = document.createElement('canvas')
+    canvas.width = img.naturalWidth || 800
+    canvas.height = img.naturalHeight || 400
+    canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+    const blob: Blob = await new Promise((resolve, reject) =>
+      canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Conversion impossible'))), 'image/png'))
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' })
+  } finally {
+    URL.revokeObjectURL(url)
   }
+}
 
-  function nextStep() {
-    const next = Math.min(wizardStep + 1, STEPS.length - 1)
-    goToStep(next)
+function apiMessage(text: string, status: number): string {
+  try {
+    const detail = JSON.parse(text).detail
+    if (typeof detail === 'string') return detail.replace(/^ERROR:\s*/, '')
+    if (Array.isArray(detail)) return detail.map((d: any) => d.msg).join(' · ')
+  } catch {
+    /* not JSON */
   }
+  if (status === 0 || status >= 502) return 'Le serveur ne répond pas. Il démarre peut-être : réessayez dans une minute.'
+  return text || `Erreur ${status}`
+}
 
-  function prevStep() {
-    setWizardStep(Math.max(wizardStep - 1, 0))
-  }
+/* ───────────────────────── small pieces ───────────────────────── */
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+function Field({ label, htmlFor, hint, children }: {
+  label: string; htmlFor: string; hint?: string; children: React.ReactNode
+}) {
+  return (
+    <div>
+      <label className="label" htmlFor={htmlFor}>{label}</label>
+      {children}
+      {hint && <p className="mt-1.5 text-xs text-[var(--muted)]">{hint}</p>}
+    </div>
+  )
+}
+
+function Counter({ id, value, min, max, onChange, label }: {
+  id: string; value: number; min: number; max?: number; onChange: (n: number) => void; label: string
+}) {
+  const clamp = (n: number) => Math.min(max ?? Infinity, Math.max(min, n))
+  return (
+    <div className="flex items-center gap-2">
+      <button type="button" className="btn btn-ghost !px-0 w-11" aria-label={`Moins de ${label}`}
+        onClick={() => onChange(clamp(value - 1))} disabled={value <= min}>
+        <Icon name="minus" className="w-4 h-4" />
+      </button>
+      <input id={id} type="number" inputMode="numeric" className="field text-center" value={value} min={min} max={max}
+        onChange={e => onChange(clamp(Number(e.target.value) || min))} />
+      <button type="button" className="btn btn-ghost !px-0 w-11" aria-label={`Plus de ${label}`}
+        onClick={() => onChange(clamp(value + 1))} disabled={max !== undefined && value >= max}>
+        <Icon name="plus" className="w-4 h-4" />
+      </button>
+    </div>
+  )
+}
+
+function Stepper({ current, maxReached, goTo }: { current: number; maxReached: number; goTo: (n: number) => void }) {
+  return (
+    <nav aria-label="Étapes">
+      <ol className="flex lg:flex-col gap-2 lg:gap-1">
+        {STEPS.map((step, i) => {
+          const state = i === current ? 'current' : i < current || i <= maxReached ? 'done' : 'todo'
+          const reachable = i <= maxReached
+          return (
+            <li key={step.label} className="flex-1 lg:flex-none">
+              <button type="button" disabled={!reachable} onClick={() => goTo(i)}
+                aria-current={i === current ? 'step' : undefined}
+                className="group w-full flex items-center gap-3 rounded-[12px] px-2 py-2 text-left transition-colors enabled:hover:bg-[var(--sand)] disabled:cursor-default">
+                <span className="step-dot" data-state={state}>
+                  {state === 'done' && i !== current ? <Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> : i + 1}
+                </span>
+                <span className="hidden sm:block min-w-0">
+                  <span className={`block text-sm font-semibold ${i === current ? 'text-[var(--burgundy)]' : reachable ? 'text-[var(--ink)]' : 'text-[var(--muted)]'}`}>
+                    {step.label}
+                  </span>
+                  <span className="hidden lg:block text-xs text-[var(--muted)]">{step.hint}</span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+    </nav>
+  )
+}
+
+/* ───────────────────────── login ───────────────────────── */
+
+function Login({ onSuccess }: { onSuccess: () => void }) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+
+  function submit(e: React.FormEvent) {
     e.preventDefault()
     if (password === WEBSITE_PASSWORD) {
-      setIsAuthenticated(true)
-      setPasswordError("")
+      sessionStorage.setItem(AUTH_KEY, '1')
+      onSuccess()
     } else {
-      setPasswordError("Mot de passe incorrect")
-      setPassword("")
-      setLoginShake(true)
-      setTimeout(() => setLoginShake(false), 500)
+      setError('Mot de passe incorrect')
+      setPassword('')
     }
   }
 
-  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] || null
-    setLogoFile(file)
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => setLogoPreview(reader.result as string)
-      reader.readAsDataURL(file)
-    } else {
-      setLogoPreview(null)
-    }
-  }
+  return (
+    <div className="min-h-screen grid lg:grid-cols-[1.1fr_1fr]">
+      <aside className="hidden lg:flex flex-col justify-between p-14 text-white"
+        style={{ background: 'linear-gradient(160deg, var(--burgundy) 0%, var(--burgundy-deep) 100%)' }}>
+        <div className="self-start rounded-[18px] bg-white p-1.5 shadow-lg">
+          <img src="/logo_1.png" alt="Preference Events" className="h-20 w-auto rounded-[12px]" />
+        </div>
+        <div>
+          <h1 className="font-display text-5xl font-bold leading-[1.05]">
+            Des présentations<br />Marrakech, prêtes<br />en quelques minutes.
+          </h1>
+          <p className="mt-6 max-w-md text-white/70 leading-relaxed">
+            Choisissez les hôtels, composez le programme jour par jour : le PowerPoint est assemblé avec la nouvelle charte.
+          </p>
+        </div>
+        <p className="text-xs text-white/50">© {new Date().getFullYear()} Preference Events — Marrakech</p>
+      </aside>
 
-  function updateHotel(index: number, patch: Partial<HotelEntry>) {
-    setHotels(prev => prev.map((h, i) => (i === index ? { ...h, ...patch } : h)))
-  }
-  function addHotel() {
-    setHotels(prev => [...prev, { hotelName: HOTEL_OPTIONS[0], rooms: 1 }])
-  }
-  function removeHotel(index: number) {
-    setHotels(prev => prev.filter((_, i) => i !== index))
-  }
-
-  function updateDayPlan(index: number, patch: Partial<DayPlan>) {
-    setDayPlans(prev => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)))
-  }
-  function addStepToDay(dayIndex: number) {
-    const newStep: DayStep = { id: `step_${Date.now()}`, category: "", activity: "" }
-    setDayPlans(prev => prev.map((d, i) =>
-      i === dayIndex ? { ...d, steps: [...d.steps, newStep] } : d
-    ))
-  }
-  function removeStepFromDay(dayIndex: number, stepId: string) {
-    setDayPlans(prev => prev.map((d, i) =>
-      i === dayIndex ? { ...d, steps: d.steps.filter(s => s.id !== stepId) } : d
-    ))
-  }
-  function updateStep(dayIndex: number, stepId: string, field: keyof DayStep, value: string) {
-    setDayPlans(prev => prev.map((d, i) =>
-      i === dayIndex ? {
-        ...d,
-        steps: d.steps.map(s => {
-          if (s.id !== stepId) return s
-          if (field === 'category') return { ...s, category: value, activity: "" }
-          return { ...s, [field]: value }
-        })
-      } : d
-    ))
-  }
-  function addManualNote(dayIndex: number) {
-    setShowManualNoteModal({ dayIndex })
-    setManualNoteText("")
-  }
-  function saveManualNote() {
-    if (!showManualNoteModal || !manualNoteText.trim()) return
-    const dayIndex = showManualNoteModal.dayIndex
-    const newManualStep: DayStep = {
-      id: `manual_${Date.now()}`,
-      category: "", activity: "",
-      isManual: true, manualText: manualNoteText.trim()
-    }
-    setDayPlans(prev => prev.map((d, i) =>
-      i === dayIndex ? { ...d, steps: [...d.steps, newManualStep] } : d
-    ))
-    setShowManualNoteModal(null)
-    setManualNoteText("")
-  }
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setSubmitting(true)
-    setError(null)
-    setSuccessMessage(null)
-    try {
-      if (!logoFile) {
-        setError("Veuillez télécharger une image de logo.")
-        setSubmitting(false)
-        return
-      }
-      for (const [dayIdx, day] of dayPlans.entries()) {
-        for (const [stepIdx, step] of day.steps.entries()) {
-          if (step.isManual) continue
-          if (!step.category || !step.activity) {
-            setError(`Jour ${dayIdx + 1}, étape ${stepIdx + 1} est incomplète. Veuillez choisir une catégorie et une activité.`)
-            setSubmitting(false)
-            return
-          }
-        }
-      }
-      const fd = new FormData()
-      fd.append('client', client)
-      fd.append('eventTitle', eventTitle)
-      fd.append('dates', dates)
-      fd.append('numDays', String(numDays))
-      fd.append('numNights', String(numNights))
-      fd.append('numPeople', String(numPeople))
-      fd.append('hotels', JSON.stringify(hotels))
-      const convertedDayPlans = dayPlans.map(day => ({
-        date: day.date,
-        steps: day.steps.filter(s => !s.isManual).map(step => step.activity),
-        manualNotes: day.steps.filter(s => s.isManual).map(step => step.manualText || "")
-      }))
-      fd.append('dayPlans', JSON.stringify(convertedDayPlans))
-      fd.append('logo', logoFile)
-
-      const res = await fetch(`${API_URL}/generate`, { method: 'POST', body: fd })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Request failed with ${res.status}`)
-      }
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      const sanitizedClient = (client || 'client').trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-      a.download = `presentation_marrakech_${sanitizedClient}.pptx`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      window.URL.revokeObjectURL(url)
-      setSuccessMessage(`Présentation téléchargée avec succès !`)
-    } catch (err: any) {
-      setError(err?.message || 'Erreur inconnue')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  // ─── Login Screen ───
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4"
-        style={{
-          background: 'linear-gradient(135deg, #2C1810 0%, #6B2139 40%, #C45B28 100%)',
-        }}>
-        {/* decorative pattern */}
-        <div className="absolute inset-0 opacity-[0.04]"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-rule='evenodd'%3E%3Cpath d='M30 0l30 30-30 30L0 30z' fill-opacity='1'/%3E%3C/g%3E%3C/svg%3E")`,
-            backgroundSize: '40px 40px',
-          }}
-        />
-        <div className={`relative glass-card rounded-3xl p-10 w-full max-w-md shadow-2xl animate-fade-in-up ${loginShake ? 'animate-[shake_0.5s_ease-in-out]' : ''}`}
-          style={{
-            background: 'rgba(255,255,255,0.95)',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
-          }}>
-          <div className="text-center mb-8">
-            <img src="/logo_1.png" alt="Preference Events" className="w-36 h-36 object-contain mx-auto mb-4" />
-            <div className="w-16 h-0.5 mx-auto mb-4" style={{ background: 'linear-gradient(90deg, var(--terracotta), var(--gold))' }} />
-            <p className="text-[#8C7E74] text-sm tracking-wide">Générateur de Présentations</p>
+      <main className="flex items-center justify-center p-6">
+        <form onSubmit={submit} className="w-full max-w-sm rise">
+          <img src="/logo_1.png" alt="Preference Events" className="h-16 w-auto mb-8 lg:hidden mix-blend-multiply -ml-3" />
+          <h2 className="font-display text-3xl font-semibold">Connexion</h2>
+          <p className="mt-2 text-sm text-[var(--muted)]">Accès réservé à l’équipe Preference Events.</p>
+          <div className="mt-8">
+            <label className="label" htmlFor="password">Mot de passe</label>
+            <input id="password" type="password" autoFocus autoComplete="current-password" className="field"
+              value={password} onChange={e => { setPassword(e.target.value); setError('') }}
+              aria-invalid={!!error} aria-describedby={error ? 'password-error' : undefined} />
+            {error && <p id="password-error" role="alert" className="mt-2 text-sm text-[var(--danger)]">{error}</p>}
           </div>
+          <button type="submit" className="btn btn-primary w-full mt-6" disabled={!password}>
+            Accéder <Icon name="right" className="w-4 h-4" />
+          </button>
+        </form>
+      </main>
+    </div>
+  )
+}
 
-          <form onSubmit={handlePasswordSubmit} className="space-y-5">
-            <div className="relative">
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Mot de passe"
-                className="input-field text-center text-lg tracking-widest"
-                required
-              />
+/* ───────────────────────── steps ───────────────────────── */
+
+type Setter = (patch: Partial<Form>) => void
+
+function StepEvent({ form, set, nights, datesText, logoFile, logoPreview, onLogo, onLogoClear, logoError }: {
+  form: Form; set: Setter; nights: number; datesText: string
+  logoFile: File | null; logoPreview: string | null
+  onLogo: (f: File | null) => void; onLogoClear: () => void; logoError: string
+}) {
+  const [dragging, setDragging] = useState(false)
+  return (
+    <div className="grid sm:grid-cols-2 gap-x-5 gap-y-6">
+      <Field label="Nom du client" htmlFor="client">
+        <input id="client" className="field" value={form.client} autoFocus placeholder="Ex : Société Dupont"
+          onChange={e => set({ client: e.target.value })} />
+      </Field>
+      <Field label="Titre de l’événement" htmlFor="title">
+        <input id="title" className="field" value={form.eventTitle} placeholder="Ex : Séminaire annuel 2026"
+          onChange={e => set({ eventTitle: e.target.value })} />
+      </Field>
+
+      <Field label="Date d’arrivée" htmlFor="start" hint={datesText ? `Affiché : ${datesText}` : 'Remplit automatiquement les dates de chaque jour.'}>
+        <input id="start" type="date" className="field" value={form.startDate}
+          onChange={e => set({ startDate: e.target.value, datesOverride: null })} />
+      </Field>
+      <Field label="Dates affichées" htmlFor="dates" hint="Modifiable, par exemple « du 25 au 28 octobre ».">
+        <input id="dates" className="field" value={datesText} placeholder="Ex : 25 au 28 octobre 2026"
+          onChange={e => set({ datesOverride: e.target.value })} />
+      </Field>
+
+      <Field label="Nombre de jours" htmlFor="days">
+        <Counter id="days" value={form.numDays} min={1} max={8} label="jours" onChange={n => set({ numDays: n })} />
+      </Field>
+      <Field label="Nombre de nuits" htmlFor="nights">
+        <Counter id="nights" value={nights} min={0} max={9} label="nuits" onChange={n => set({ numNights: n })} />
+      </Field>
+
+      <Field label="Nombre de personnes" htmlFor="people">
+        <Counter id="people" value={form.numPeople} min={1} label="personnes" onChange={n => set({ numPeople: n })} />
+      </Field>
+
+      <div>
+        <span className="label">Logo du client <span className="normal-case tracking-normal font-normal">(facultatif)</span></span>
+        {logoPreview ? (
+          <div className="inner flex items-center gap-3 p-2.5">
+            <div className="h-14 w-20 flex-none rounded-[8px] bg-white border border-[var(--line)] flex items-center justify-center p-1">
+              <img src={logoPreview} alt="Aperçu du logo" className="max-h-full max-w-full object-contain" />
             </div>
-            {passwordError && (
-              <p className="text-red-500 text-sm text-center">{passwordError}</p>
-            )}
-            <button type="submit" className="w-full btn-primary py-3.5 text-base tracking-wide shimmer-btn">
-              Accéder
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium truncate">{logoFile?.name}</p>
+              <p className="text-xs text-[var(--muted)]">{logoFile ? Math.max(1, Math.round(logoFile.size / 1024)) : 0} Ko</p>
+            </div>
+            <button type="button" className="icon-btn" onClick={onLogoClear} aria-label="Retirer le logo">
+              <Icon name="x" className="w-4 h-4" />
             </button>
-          </form>
-
-          <div className="mt-8 text-center">
-            <p className="text-xs text-[#8C7E74]/60">© {new Date().getFullYear()} Preference Events — Marrakech</p>
           </div>
+        ) : (
+          <label
+            onDragOver={e => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => { e.preventDefault(); setDragging(false); onLogo(e.dataTransfer.files?.[0] || null) }}
+            className={`flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-[12px] border-2 border-dashed px-4 py-3 text-sm transition-colors ${dragging ? 'border-[var(--burgundy)] bg-[var(--sand)]' : 'border-[var(--taupe)] hover:bg-[var(--sand)]'}`}>
+            <Icon name="upload" className="w-4 h-4 text-[var(--muted)]" />
+            <span>Glisser une image ou <span className="font-semibold text-[var(--burgundy)]">parcourir</span></span>
+            <input type="file" accept="image/*" className="sr-only" onChange={e => onLogo(e.target.files?.[0] || null)} />
+          </label>
+        )}
+        {logoError && <p role="alert" className="mt-1.5 text-xs text-[var(--danger)]">{logoError}</p>}
+        <p className="mt-1.5 text-xs text-[var(--muted)]">Affiché sur la page de garde.</p>
+      </div>
+    </div>
+  )
+}
+
+function StepHotels({ form, set }: { form: Form; set: Setter }) {
+  const update = (i: number, patch: Partial<HotelEntry>) =>
+    set({ hotels: form.hotels.map((h, k) => (k === i ? { ...h, ...patch } : h)) })
+  return (
+    <div>
+      <ul className="space-y-3">
+        {form.hotels.map((h, i) => (
+          <li key={i} className="inner rise p-3 grid gap-3 sm:grid-cols-[1fr_180px_auto] items-end">
+            <Field label={form.hotels.length > 1 ? `Hôtel ${i + 1}` : 'Hôtel'} htmlFor={`hotel-${i}`}>
+              <select id={`hotel-${i}`} className="select" value={h.hotelName}
+                onChange={e => update(i, { hotelName: e.target.value })}>
+                {HOTEL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </Field>
+            <Field label="Chambres" htmlFor={`rooms-${i}`}>
+              <Counter id={`rooms-${i}`} value={h.rooms} min={1} label="chambres" onChange={n => update(i, { rooms: n })} />
+            </Field>
+            <button type="button" className="icon-btn mb-1" aria-label={`Retirer l’hôtel ${i + 1}`}
+              disabled={form.hotels.length === 1}
+              onClick={() => set({ hotels: form.hotels.filter((_, k) => k !== i) })}>
+              <Icon name="trash" className="w-4 h-4" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="btn btn-quiet mt-4"
+        onClick={() => set({ hotels: [...form.hotels, { hotelName: HOTEL_OPTIONS[0], rooms: 10 }] })}>
+        <Icon name="plus" className="w-4 h-4" /> Ajouter un hôtel
+      </button>
+      {form.hotels.length > 1 && (
+        <p className="mt-3 text-sm text-[var(--muted)]">Une slide « Propositions d’hébergement » sera ajoutée avant les hôtels.</p>
+      )}
+    </div>
+  )
+}
+
+function StepProgram({ form, set, day, setDay }: {
+  form: Form; set: Setter; day: number; setDay: (n: number) => void
+}) {
+  const plan = form.days[day]
+  const [noteDraft, setNoteDraft] = useState('')
+  const update = (patch: Partial<DayPlan>) =>
+    set({ days: form.days.map((d, i) => (i === day ? { ...d, ...patch } : d)) })
+  const filled = (d: DayPlan) => d.slots.filter(Boolean).length
+
+  return (
+    <div>
+      <div role="tablist" aria-label="Jours" className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+        {form.days.map((d, i) => (
+          <button key={i} role="tab" type="button" aria-selected={i === day} className="day-tab" onClick={() => setDay(i)}>
+            <span className="block text-sm font-semibold">Jour {i + 1}</span>
+            <span className={`block text-xs ${i === day ? 'text-white/75' : 'text-[var(--muted)]'}`}>
+              {filled(d) ? `${filled(d)} / 5` : 'vide'}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-5 grid sm:grid-cols-[1fr_auto] gap-4 items-end">
+        <Field label="Date affichée" htmlFor="day-date">
+          <input id="day-date" className="field" placeholder="Ex : Lundi 25 octobre"
+            value={plan.dateOverride ?? dayLabel(form.startDate, day)}
+            onChange={e => update({ dateOverride: e.target.value })} />
+        </Field>
+        {filled(plan) > 0 && (
+          <button type="button" className="btn btn-quiet" onClick={() => update({ slots: ['', '', '', '', ''] })}>
+            <Icon name="refresh" className="w-4 h-4" /> Vider le jour
+          </button>
+        )}
+      </div>
+
+      <ul className="mt-5 space-y-2.5">
+        {SLOTS.map((slot, k) => (
+          <li key={slot.key} className="slot-row" data-filled={!!plan.slots[k]}>
+            <label htmlFor={`slot-${k}`} className="flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--sand)] text-[var(--burgundy)]">
+                <Icon name={slot.icon} className="w-4 h-4" />
+              </span>
+              {slot.label}
+            </label>
+            <select id={`slot-${k}`} className="select" value={plan.slots[k]}
+              onChange={e => update({ slots: plan.slots.map((s, i) => (i === k ? e.target.value : s)) })}>
+              <option value="">— Aucun —</option>
+              {slot.groups.map(g => (
+                <optgroup key={g} label={g}>
+                  {GROUPS[g].map(o => <option key={g + o} value={o}>{o}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            <button type="button" className="icon-btn" aria-label={`Vider ${slot.label}`} disabled={!plan.slots[k]}
+              onClick={() => update({ slots: plan.slots.map((s, i) => (i === k ? '' : s)) })}>
+              <Icon name="x" className="w-4 h-4" />
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-7">
+        <h3 className="label">Notes manuelles</h3>
+        <p className="text-sm text-[var(--muted)] mb-3">Chaque note ajoute une slide vide avec votre texte, à compléter dans PowerPoint.</p>
+        {plan.notes.length > 0 && (
+          <ul className="space-y-2 mb-3">
+            {plan.notes.map((n, i) => (
+              <li key={i} className="inner flex items-start gap-3 p-3">
+                <Icon name="note" className="w-4 h-4 mt-0.5 text-[var(--burgundy)] flex-none" />
+                <p className="flex-1 text-sm">{n}</p>
+                <button type="button" className="icon-btn !h-7 !w-7" aria-label="Supprimer la note"
+                  onClick={() => update({ notes: plan.notes.filter((_, k) => k !== i) })}>
+                  <Icon name="x" className="w-4 h-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex gap-2">
+          <input className="field" value={noteDraft} placeholder="Ex : Ajouter les photos du restaurant"
+            aria-label="Nouvelle note"
+            onChange={e => setNoteDraft(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && noteDraft.trim()) {
+                e.preventDefault(); update({ notes: [...plan.notes, noteDraft.trim()] }); setNoteDraft('')
+              }
+            }} />
+          <button type="button" className="btn btn-ghost" disabled={!noteDraft.trim()}
+            onClick={() => { update({ notes: [...plan.notes, noteDraft.trim()] }); setNoteDraft('') }}>
+            Ajouter
+          </button>
         </div>
       </div>
-    )
+    </div>
+  )
+}
+
+/* ───────────────────────── summary ───────────────────────── */
+
+function Summary({ form, nights, datesText, hasLogo }: { form: Form; nights: number; datesText: string; hasLogo: boolean }) {
+  return (
+    <aside className="card p-5 lg:sticky lg:top-24" aria-label="Récapitulatif">
+      <h2 className="label !mb-4">Votre présentation</h2>
+      <dl className="space-y-4 text-sm">
+        <div>
+          <dt className="text-xs text-[var(--muted)]">Client</dt>
+          <dd className="font-display text-lg font-semibold leading-tight">{form.client || '—'}</dd>
+          {form.eventTitle && <dd className="text-[var(--muted)]">{form.eventTitle}</dd>}
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          {[[form.numDays, 'jours'], [nights, 'nuits'], [form.numPeople, 'pers.']].map(([n, l]) => (
+            <div key={l as string} className="inner py-2">
+              <div className="font-display text-lg font-semibold">{n}</div>
+              <div className="text-[11px] text-[var(--muted)]">{l}</div>
+            </div>
+          ))}
+        </div>
+        {datesText && <p className="text-[var(--muted)]">{datesText}</p>}
+        <div>
+          <dt className="text-xs text-[var(--muted)] mb-1">Hôtels</dt>
+          {form.hotels.map((h, i) => (
+            <dd key={i} className="flex justify-between gap-2 py-0.5">
+              <span className="truncate">{h.hotelName}</span><span className="text-[var(--muted)] flex-none">{h.rooms} ch.</span>
+            </dd>
+          ))}
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--muted)] mb-1">Programme</dt>
+          {form.days.map((d, i) => {
+            const n = d.slots.filter(Boolean).length
+            return (
+              <dd key={i} className="flex items-center justify-between py-0.5">
+                <span>Jour {i + 1}</span>
+                <span className={n ? 'text-[var(--ok)] font-medium' : 'text-[var(--muted)]'}>{n ? `${n} étape${n > 1 ? 's' : ''}` : 'vide'}</span>
+              </dd>
+            )
+          })}
+        </div>
+        <p className="text-xs text-[var(--muted)]">Logo : {hasLogo ? 'ajouté' : 'aucun'}</p>
+      </dl>
+    </aside>
+  )
+}
+
+/* ───────────────────────── app ───────────────────────── */
+
+export default function App() {
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem(AUTH_KEY) === '1')
+  const [form, setForm] = useState<Form>(loadDraft)
+  const [step, setStep] = useState(0)
+  const [maxReached, setMaxReached] = useState(0)
+  const [day, setDay] = useState(0)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [logoError, setLogoError] = useState('')
+
+  const [busy, setBusy] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ url: string; filename: string; size: number } | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const set: Setter = patch => setForm(f => ({ ...f, ...patch }))
+  const nights = form.numNights ?? Math.max(form.numDays - 1, 0)
+  const datesText = form.datesOverride ?? datesLabel(form.startDate, form.numDays)
+
+  // Keep one plan per day
+  useEffect(() => {
+    setForm(f => f.days.length === f.numDays ? f : {
+      ...f, days: Array.from({ length: f.numDays }, (_, i) => f.days[i] || emptyDay()),
+    })
+    setDay(d => Math.min(d, form.numDays - 1))
+  }, [form.numDays])
+
+  // Draft autosave (the logo file cannot be stored)
+  useEffect(() => {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(form)) } catch { /* private mode */ }
+  }, [form])
+
+  useEffect(() => {
+    if (!busy) return
+    setElapsed(0)
+    const t = setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [busy])
+
+  useEffect(() => () => { if (result) URL.revokeObjectURL(result.url) }, [result])
+
+  const filledDays = form.days.filter(d => d.slots.some(Boolean) || d.notes.length).length
+  const stepValid = [
+    form.client.trim().length > 0,
+    form.hotels.length > 0,
+    filledDays > 0,
+    true,
+  ]
+  const blocker = [
+    'Indiquez le nom du client pour continuer.',
+    '',
+    'Remplissez au moins une case dans le programme.',
+    '',
+  ]
+
+  function goTo(n: number) {
+    setStep(n)
+    setMaxReached(m => Math.max(m, n))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  // ─── Main App ───
+  async function onLogo(file: File | null) {
+    setLogoError('')
+    if (!file) return
+    try {
+      const png = await toPng(file)
+      setLogoFile(png)
+      setLogoPreview(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(png) })
+    } catch (e: any) {
+      setLogoError(e?.message || 'Image illisible')
+    }
+  }
+
+  function clearLogo() {
+    setLogoFile(null)
+    setLogoPreview(prev => { if (prev) URL.revokeObjectURL(prev); return null })
+  }
+
+  function reset() {
+    if (result) URL.revokeObjectURL(result.url)
+    setResult(null); setError(null); setForm(initialForm()); clearLogo(); setStep(0); setMaxReached(0); setDay(0)
+  }
+
+  async function generate() {
+    setError(null)
+    if (result) { URL.revokeObjectURL(result.url); setResult(null) }
+    setBusy(true)
+    const controller = new AbortController()
+    abortRef.current = controller
+    try {
+      const fd = new FormData()
+      fd.append('client', form.client.trim())
+      fd.append('eventTitle', form.eventTitle.trim())
+      fd.append('dates', datesText || 'à définir')
+      fd.append('numDays', String(form.numDays))
+      fd.append('numNights', String(nights))
+      fd.append('numPeople', String(form.numPeople))
+      fd.append('hotels', JSON.stringify(form.hotels))
+      fd.append('dayPlans', JSON.stringify(form.days.map((d, i) => ({
+        date: d.dateOverride ?? dayLabel(form.startDate, i),
+        slots: d.slots,
+        steps: d.slots.filter(Boolean),
+        manualNotes: d.notes,
+      }))))
+      if (logoFile) fd.append('logo', logoFile)
+
+      const res = await fetch(`${API_URL}/generate`, { method: 'POST', body: fd, signal: controller.signal })
+      if (!res.ok) throw new Error(apiMessage(await res.text(), res.status))
+      const blob = await res.blob()
+      const filename = `presentation_marrakech_${(form.client || 'client').trim().replace(/[^a-zA-Z0-9_-]+/g, '_')}.pptx`
+      const url = URL.createObjectURL(blob)
+      setResult({ url, filename, size: blob.size })
+      const a = document.createElement('a')
+      a.href = url; a.download = filename
+      document.body.appendChild(a); a.click(); a.remove()
+    } catch (e: any) {
+      if (e?.name === 'AbortError') setError('Génération annulée.')
+      else setError(e?.message === 'Failed to fetch' ? apiMessage('', 0) : e?.message || 'Erreur inconnue')
+    } finally {
+      setBusy(false)
+      abortRef.current = null
+    }
+  }
+
+  const stage = useMemo(() => STAGES[Math.min(STAGES.length - 1, Math.floor(elapsed / 15))], [elapsed])
+
+  if (!authed) return <Login onSuccess={() => setAuthed(true)} />
+
   return (
-    <div className="min-h-screen" style={{ background: 'var(--cream)' }}>
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-[#C45B28]/10"
-        style={{ background: 'rgba(250,246,240,0.9)', backdropFilter: 'blur(12px)' }}>
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src="/logo_1.png" alt="Logo" className="w-10 h-10 object-contain" />
-            <div>
-              <h1 className="font-display text-xl font-semibold text-[#2C1810]">Preference Events</h1>
-              <p className="text-xs text-[#8C7E74]">Générateur de Présentations</p>
-            </div>
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--cream)]">
+        <div className="mx-auto flex max-w-[1180px] items-center justify-between px-5 py-3">
+          <div className="flex items-center gap-3">
+            <img src="/logo_1.png" alt="Preference Events" className="h-11 w-auto mix-blend-multiply" />
+            <span className="hidden sm:block h-5 w-px bg-[var(--line)]" />
+            <span className="hidden sm:block text-sm text-[var(--muted)]">Générateur de présentations</span>
           </div>
-          <button
-            type="button"
-            onClick={() => { setIsAuthenticated(false); setPassword("") }}
-            className="text-xs text-[#8C7E74] hover:text-[#C45B28] transition-colors"
-          >
-            Déconnexion
-          </button>
+          <div className="flex items-center gap-1">
+            <button type="button" className="btn btn-quiet" onClick={() => { if (confirm('Effacer le formulaire et recommencer ?')) reset() }}>
+              <Icon name="refresh" className="w-4 h-4" /><span className="hidden sm:inline">Nouveau</span>
+            </button>
+            <button type="button" className="btn btn-quiet !text-[var(--muted)]"
+              onClick={() => { sessionStorage.removeItem(AUTH_KEY); setAuthed(false) }}>
+              <Icon name="logout" className="w-4 h-4" /><span className="hidden sm:inline">Déconnexion</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        <WizardNav current={wizardStep} goTo={goToStep} maxReached={maxReached} />
+      <div className="mx-auto grid max-w-[1180px] gap-6 px-5 py-8 lg:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[200px_minmax(0,1fr)_280px]">
+        <div className="lg:sticky lg:top-24 lg:self-start">
+          <Stepper current={step} maxReached={maxReached} goTo={goTo} />
+        </div>
 
-        <form onSubmit={onSubmit}>
-          {/* ─── Step 0: General Info ─── */}
-          {wizardStep === 0 && (
-            <div className="animate-fade-in-up">
-              <div className="glass-card rounded-2xl p-8 shadow-sm">
-                <SectionHeader icon="📋" title="Informations Générales" subtitle="Renseignez les détails du séminaire" />
+        <main>
+          <section className="card p-6 sm:p-8 rise" key={step} aria-labelledby="step-title">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--burgundy)]">Étape {step + 1} sur {STEPS.length}</p>
+            <h1 id="step-title" className="font-display mt-1 text-3xl font-semibold">
+              {['Informations sur l’événement', 'Hébergement', 'Programme', 'Votre présentation'][step]}
+            </h1>
+            <p className="mt-1.5 mb-7 text-[var(--muted)]">
+              {[
+                'Ces informations apparaissent sur la page de garde et dans l’introduction.',
+                'Un ou plusieurs hôtels, avec le nombre de chambres réservées.',
+                'Remplissez les cases de chaque journée. Les photos sont ajoutées automatiquement.',
+                'Vérifiez le récapitulatif puis lancez la génération.',
+              ][step]}
+            </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <FieldLabel>Nom du client</FieldLabel>
-                    <input className="input-field" value={client} onChange={e => setClient(e.target.value)} placeholder="Ex: Société Dupont" />
-                  </div>
-                  <div>
-                    <FieldLabel>Titre de l'événement</FieldLabel>
-                    <input className="input-field" value={eventTitle} onChange={e => setEventTitle(e.target.value)} placeholder="Ex: Séminaire Annuel 2026" />
-                  </div>
-                  <div>
-                    <FieldLabel>Dates du séjour</FieldLabel>
-                    <input className="input-field" value={dates} onChange={e => setDates(e.target.value)} placeholder="Ex: 25 au 28 Octobre" />
-                  </div>
-                  <div>
-                    <FieldLabel>Nombre de jours (1-8)</FieldLabel>
-                    <input type="number" min={1} max={8} className="input-field" value={numDays} onChange={e => setNumDays(Number(e.target.value || 1))} />
-                  </div>
-                  <div>
-                    <FieldLabel>Nombre de nuits</FieldLabel>
-                    <input type="number" className="input-field" value={numNights} onChange={e => setNumNights(Number(e.target.value || 0))} />
-                  </div>
-                  <div>
-                    <FieldLabel>Nombre de personnes</FieldLabel>
-                    <input type="number" className="input-field" value={numPeople} onChange={e => setNumPeople(Number(e.target.value || 0))} />
-                  </div>
-                  <div>
-                    <FieldLabel>Logo du client</FieldLabel>
-                    <div className="relative">
-                      {logoPreview ? (
-                        <div className="flex items-center gap-4 p-3 rounded-xl border border-gray-200 bg-white/80">
-                          <img src={logoPreview} alt="Logo preview" className="w-14 h-14 object-contain rounded-lg bg-gray-50 p-1" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-[#2C1810] truncate">{logoFile?.name}</p>
-                            <p className="text-xs text-[#8C7E74]">{logoFile && (logoFile.size / 1024).toFixed(0)} Ko</p>
-                          </div>
-                          <button type="button" onClick={() => { setLogoFile(null); setLogoPreview(null) }}
-                            className="text-gray-400 hover:text-red-500 transition-colors p-1">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                      ) : (
-                        <label className="flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed border-gray-200 hover:border-[#C45B28]/40 cursor-pointer transition-colors bg-white/50">
-                          <svg className="w-8 h-8 text-[#8C7E74] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span className="text-sm text-[#8C7E74]">Cliquez pour télécharger</span>
-                          <input type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
-                        </label>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {step === 0 && (
+              <StepEvent form={form} set={set} nights={nights} datesText={datesText} logoFile={logoFile}
+                logoPreview={logoPreview} onLogo={onLogo} onLogoClear={clearLogo} logoError={logoError} />
+            )}
+            {step === 1 && <StepHotels form={form} set={set} />}
+            {step === 2 && <StepProgram form={form} set={set} day={day} setDay={setDay} />}
 
-              <div className="flex justify-end mt-6">
-                <button type="button" onClick={nextStep} className="btn-primary flex items-center gap-2">
-                  Suivant
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
+            {step === 3 && (
+              <div>
+                <div className="xl:hidden mb-6"><Summary form={form} nights={nights} datesText={datesText} hasLogo={!!logoFile} /></div>
 
-          {/* ─── Step 1: Hotels ─── */}
-          {wizardStep === 1 && (
-            <div className="animate-fade-in-up">
-              <div className="glass-card rounded-2xl p-8 shadow-sm">
-                <SectionHeader icon="🏨" title="Hébergement" subtitle="Sélectionnez les hôtels et le nombre de chambres" />
-
-                <div className="space-y-4">
-                  {hotels.map((h, i) => (
-                    <div key={i} className="flex gap-4 items-start p-4 rounded-xl bg-white/60 border border-gray-100 animate-slide-in"
-                      style={{ animationDelay: `${i * 80}ms` }}>
-                      <div className="w-10 h-10 rounded-full bg-[#C45B28]/10 flex items-center justify-center flex-shrink-0 mt-1">
-                        <span className="text-[#C45B28] font-semibold text-sm">{i + 1}</span>
-                      </div>
-                      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="md:col-span-2">
-                          <FieldLabel>Hôtel</FieldLabel>
-                          <select className="select-field" value={h.hotelName} onChange={e => updateHotel(i, { hotelName: e.target.value })}>
-                            {HOTEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <FieldLabel>Chambres</FieldLabel>
-                          <input type="number" min={1} className="input-field" value={h.rooms} onChange={e => updateHotel(i, { rooms: Number(e.target.value || 1) })} />
-                        </div>
-                      </div>
-                      {hotels.length > 1 && (
-                        <button type="button" onClick={() => removeHotel(i)}
-                          className="mt-6 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <button type="button" onClick={addHotel}
-                  className="mt-4 btn-secondary flex items-center gap-2 mx-auto">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Ajouter un hôtel
-                </button>
-              </div>
-
-              <div className="flex justify-between mt-6">
-                <button type="button" onClick={prevStep} className="btn-secondary flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                  Retour
-                </button>
-                <button type="button" onClick={nextStep} className="btn-primary flex items-center gap-2">
-                  Suivant
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ─── Step 2: Day Plans ─── */}
-          {wizardStep === 2 && (
-            <div className="animate-fade-in-up">
-              <div className="glass-card rounded-2xl p-8 shadow-sm">
-                <SectionHeader icon="📅" title="Programme Journalier" subtitle="Planifiez chaque journée du séminaire" />
-
-                <div className="space-y-4">
-                  {dayPlans.map((day, dayIndex) => {
-                    const isExpanded = expandedDay === dayIndex
-                    const stepCount = day.steps.length
-                    const completedSteps = day.steps.filter(s => s.isManual || (s.category && s.activity)).length
-
-                    return (
-                      <div key={dayIndex} className="day-card">
-                        {/* Day header */}
-                        <button
-                          type="button"
-                          onClick={() => setExpandedDay(isExpanded ? null : dayIndex)}
-                          className="w-full px-6 py-4 flex items-center justify-between hover:bg-white/50 transition-colors"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl flex items-center justify-center font-display text-lg font-bold text-white"
-                              style={{ background: 'linear-gradient(135deg, var(--terracotta), var(--terracotta-dark))' }}>
-                              J{dayIndex + 1}
-                            </div>
-                            <div className="text-left">
-                              <p className="font-medium text-[#2C1810]">Jour {dayIndex + 1}</p>
-                              <p className="text-xs text-[#8C7E74]">
-                                {day.date || 'Date non définie'} · {stepCount} étape{stepCount !== 1 ? 's' : ''}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {stepCount > 0 && (
-                              <div className="flex items-center gap-1.5">
-                                <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full transition-all duration-500"
-                                    style={{
-                                      width: `${stepCount > 0 ? (completedSteps / stepCount) * 100 : 0}%`,
-                                      background: 'linear-gradient(90deg, var(--terracotta), var(--gold))',
-                                    }}
-                                  />
-                                </div>
-                                <span className="text-xs text-[#8C7E74]">{completedSteps}/{stepCount}</span>
-                              </div>
-                            )}
-                            <svg className={`w-5 h-5 text-[#8C7E74] transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
-                              fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </div>
-                        </button>
-
-                        {/* Day content */}
-                        {isExpanded && (
-                          <div className="px-6 pb-6 animate-fade-in-up">
-                            <div className="mb-5">
-                              <FieldLabel>Date</FieldLabel>
-                              <input
-                                className="input-field max-w-xs"
-                                value={day.date}
-                                onChange={e => updateDayPlan(dayIndex, { date: e.target.value })}
-                                placeholder="Ex: 26 OCT"
-                              />
-                            </div>
-
-                            {/* Steps timeline */}
-                            <div className="space-y-3 mb-5">
-                              {day.steps.map((step, stepIndex) => (
-                                <div key={step.id} className="flex gap-4 animate-slide-in" style={{ animationDelay: `${stepIndex * 60}ms` }}>
-                                  {/* Timeline line */}
-                                  <div className="flex flex-col items-center pt-1">
-                                    <div className={`timeline-dot ${step.isManual || (step.category && step.activity) ? 'filled' : ''}`} />
-                                    {stepIndex < day.steps.length - 1 && (
-                                      <div className="w-0.5 flex-1 bg-gray-200 mt-1" />
-                                    )}
-                                  </div>
-
-                                  {/* Step content */}
-                                  <div className="flex-1 pb-4">
-                                    {step.isManual ? (
-                                      <div className="flex items-center gap-3 p-3 rounded-xl bg-purple-50 border border-purple-100">
-                                        <span className="text-purple-600 text-lg">📝</span>
-                                        <div className="flex-1">
-                                          <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider">Note manuelle</p>
-                                          <p className="text-sm text-purple-800 mt-0.5">{step.manualText}</p>
-                                        </div>
-                                        <button type="button" onClick={() => removeStepFromDay(dayIndex, step.id)}
-                                          className="p-1.5 text-purple-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                          </svg>
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <div className="p-4 rounded-xl bg-white/70 border border-gray-100">
-                                        <div className="flex items-center justify-between mb-3">
-                                          <span className="text-xs font-semibold text-[#8C7E74] uppercase tracking-wider">
-                                            Étape {stepIndex + 1}
-                                          </span>
-                                          <button type="button" onClick={() => removeStepFromDay(dayIndex, step.id)}
-                                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                          <div>
-                                            <select className="select-field text-sm" value={step.category}
-                                              onChange={e => updateStep(dayIndex, step.id, 'category', e.target.value)}>
-                                              <option value="" disabled>Catégorie</option>
-                                              {Object.keys(CATEGORY_OPTIONS).map(cat => (
-                                                <option key={cat} value={cat}>{CATEGORY_ICONS[cat] || ''} {cat}</option>
-                                              ))}
-                                            </select>
-                                          </div>
-                                          <div>
-                                            <select className="select-field text-sm" disabled={!step.category} value={step.activity}
-                                              onChange={e => updateStep(dayIndex, step.id, 'activity', e.target.value)}>
-                                              <option value="" disabled>
-                                                {step.category ? "Activité" : "Choisir catégorie d'abord"}
-                                              </option>
-                                              {CATEGORY_OPTIONS[step.category]?.map(a => (
-                                                <option key={a} value={a}>{a}</option>
-                                              ))}
-                                            </select>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-
-                            {/* Action buttons */}
-                            <div className="flex flex-wrap gap-2 ml-7">
-                              <button type="button" onClick={() => addStepToDay(dayIndex)}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-[#C45B28] bg-[#C45B28]/5 hover:bg-[#C45B28]/10 transition-colors">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
-                                Étape
-                              </button>
-                              <button type="button" onClick={() => addManualNote(dayIndex)}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                                Note manuelle
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="flex justify-between mt-6">
-                <button type="button" onClick={prevStep} className="btn-secondary flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                  Retour
-                </button>
-                <button type="button" onClick={nextStep} className="btn-primary flex items-center gap-2">
-                  Suivant
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ─── Step 3: Review & Generate ─── */}
-          {wizardStep === 3 && (
-            <div className="animate-fade-in-up">
-              <div className="glass-card rounded-2xl p-8 shadow-sm">
-                <SectionHeader icon="✨" title="Récapitulatif" subtitle="Vérifiez les détails avant de générer la présentation" />
-
-                {/* Summary cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                  {/* Client info */}
-                  <div className="p-5 rounded-xl bg-white/70 border border-gray-100">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#8C7E74] mb-3">Client</p>
-                    <p className="font-display text-lg font-semibold text-[#2C1810]">{client || '—'}</p>
-                    {eventTitle && <p className="text-sm text-[#2C1810]/70 mt-0.5">{eventTitle}</p>}
-                    <p className="text-sm text-[#8C7E74] mt-1">{dates || 'Dates non définies'}</p>
-                    <div className="flex gap-4 mt-3 text-sm text-[#8C7E74]">
-                      <span>{numDays} jour{numDays > 1 ? 's' : ''}</span>
-                      <span>·</span>
-                      <span>{numNights} nuit{numNights > 1 ? 's' : ''}</span>
-                      <span>·</span>
-                      <span>{numPeople} pers.</span>
-                    </div>
-                  </div>
-
-                  {/* Logo */}
-                  <div className="p-5 rounded-xl bg-white/70 border border-gray-100">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#8C7E74] mb-3">Logo</p>
-                    {logoPreview ? (
-                      <div className="flex items-center gap-3">
-                        <img src={logoPreview} alt="Logo" className="w-16 h-16 object-contain rounded-lg bg-gray-50 p-1" />
-                        <p className="text-sm text-[#2C1810]">{logoFile?.name}</p>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-red-500 flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                        </svg>
-                        Logo non téléchargé
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Hotels */}
-                  <div className="p-5 rounded-xl bg-white/70 border border-gray-100">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#8C7E74] mb-3">
-                      Hôtels ({hotels.length})
-                    </p>
-                    <div className="space-y-2">
-                      {hotels.map((h, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm">
-                          <span className="text-[#2C1810]">{h.hotelName}</span>
-                          <span className="text-[#8C7E74] bg-gray-100 px-2 py-0.5 rounded-full text-xs">
-                            {h.rooms} ch.
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Programme */}
-                  <div className="p-5 rounded-xl bg-white/70 border border-gray-100">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#8C7E74] mb-3">
-                      Programme ({numDays} jours)
-                    </p>
-                    <div className="space-y-2">
-                      {dayPlans.map((day, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm">
-                          <span className="text-[#2C1810]">Jour {i + 1} {day.date ? `— ${day.date}` : ''}</span>
-                          <span className="text-[#8C7E74] bg-gray-100 px-2 py-0.5 rounded-full text-xs">
-                            {day.steps.length} étape{day.steps.length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Errors & Success */}
-                {error && (
-                  <div className="mb-6 flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm animate-fade-in-up">
-                    <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p>{error}</p>
-                  </div>
-                )}
-
-                {successMessage && (
-                  <div className="mb-6 flex items-start gap-3 p-4 rounded-xl bg-green-50 border border-green-100 text-green-700 text-sm animate-fade-in-up">
-                    <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p>{successMessage}</p>
-                  </div>
-                )}
-
-                {/* Loading state */}
-                {submitting && (
-                  <div className="mb-6 p-6 rounded-xl border border-[#C45B28]/20 bg-[#C45B28]/5 animate-fade-in-up">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="w-10 h-10 rounded-full border-3 border-[#C45B28]/20 border-t-[#C45B28] animate-spin"
-                        style={{ borderWidth: '3px' }} />
+                {busy && (
+                  <div className="inner p-5 rise" role="status" aria-live="polite">
+                    <div className="flex items-center justify-between gap-4">
                       <div>
-                        <p className="font-medium text-[#2C1810]">Génération en cours...</p>
-                        <p className="text-sm text-[#8C7E74]">Cela peut prendre jusqu'à une minute</p>
+                        <p className="font-semibold">{stage}</p>
+                        <p className="text-sm text-[var(--muted)]">Cela peut prendre jusqu’à 2 minutes · {elapsed} s</p>
                       </div>
+                      <button type="button" className="btn btn-ghost" onClick={() => abortRef.current?.abort()}>Annuler</button>
                     </div>
-                    <div className="w-full h-1.5 bg-[#C45B28]/10 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full loading-bar" style={{ width: '100%' }} />
-                    </div>
+                    <div className="indeterminate relative mt-4 h-1.5 overflow-hidden rounded-full bg-[var(--sand)]" />
                   </div>
                 )}
 
-                {/* Generate button */}
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full shimmer-btn btn-primary py-4 text-lg font-semibold tracking-wide flex items-center justify-center gap-3 rounded-2xl"
-                >
-                  {submitting ? (
-                    'Génération en cours…'
-                  ) : (
-                    <>
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Générer la Présentation
-                    </>
-                  )}
+                {error && !busy && (
+                  <div role="alert" className="flex gap-3 rounded-[12px] border border-[#e8c3be] bg-[#fbeceb] p-4 text-[var(--danger)] rise">
+                    <Icon name="alert" className="w-5 h-5 mt-0.5 flex-none" />
+                    <div><p className="font-semibold">La génération a échoué</p><p className="text-sm mt-0.5">{error}</p></div>
+                  </div>
+                )}
+
+                {result && !busy && (
+                  <div className="rounded-[12px] border border-[#bfd8c9] bg-[#edf6f0] p-5 rise" role="status">
+                    <div className="flex items-start gap-3 text-[var(--ok)]">
+                      <Icon name="check" className="w-5 h-5 mt-0.5 flex-none" strokeWidth={2.5} />
+                      <div>
+                        <p className="font-semibold">Présentation prête</p>
+                        <p className="text-sm">{result.filename} · {(result.size / 1048576).toFixed(1)} Mo — le téléchargement a démarré.</p>
+                      </div>
+                    </div>
+                    <a href={result.url} download={result.filename} className="btn btn-ghost mt-4 bg-white">
+                      <Icon name="download" className="w-4 h-4" /> Télécharger à nouveau
+                    </a>
+                  </div>
+                )}
+
+                {!busy && (
+                  <button type="button" onClick={generate} className="btn btn-primary mt-6 w-full !min-h-[52px] text-base">
+                    <Icon name="file" className="w-5 h-5" />
+                    {result ? 'Générer à nouveau' : 'Générer la présentation'}
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <button type="button" className="btn btn-ghost" onClick={() => goTo(step - 1)} disabled={step === 0 || busy}>
+              <Icon name="left" className="w-4 h-4" /> Retour
+            </button>
+            {step < STEPS.length - 1 && (
+              <div className="flex items-center gap-3">
+                {!stepValid[step] && <span className="hidden sm:block text-sm text-[var(--muted)]">{blocker[step]}</span>}
+                <button type="button" className="btn btn-primary" onClick={() => goTo(step + 1)} disabled={!stepValid[step]}>
+                  Continuer <Icon name="right" className="w-4 h-4" />
                 </button>
               </div>
-
-              <div className="flex justify-start mt-6">
-                <button type="button" onClick={prevStep} className="btn-secondary flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                  Retour
-                </button>
-              </div>
-            </div>
-          )}
-        </form>
-
-        <div className="mt-8 text-center text-xs text-[#8C7E74]/50">
-          © {new Date().getFullYear()} Preference Events — Marrakech
-        </div>
-      </main>
-
-      {/* Manual Note Modal */}
-      {showManualNoteModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in-up">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
-            <div className="px-6 py-5 border-b border-gray-100">
-              <h3 className="font-display text-lg font-semibold text-[#2C1810]">Note manuelle</h3>
-              <p className="text-sm text-[#8C7E74] mt-1">
-                Ajoutez une note qui apparaîtra sur une diapositive vide
-              </p>
-            </div>
-            <div className="p-6">
-              <textarea
-                className="input-field min-h-[120px] resize-none"
-                value={manualNoteText}
-                onChange={e => setManualNoteText(e.target.value)}
-                placeholder="Votre note ici..."
-                autoFocus
-              />
-            </div>
-            <div className="px-6 py-4 bg-gray-50 flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={() => { setShowManualNoteModal(null); setManualNoteText("") }}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={saveManualNote}
-                disabled={!manualNoteText.trim()}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
-              >
-                Ajouter la note
-              </button>
-            </div>
+            )}
           </div>
-        </div>
-      )}
+        </main>
+
+        <div className="hidden xl:block"><Summary form={form} nights={nights} datesText={datesText} hasLogo={!!logoFile} /></div>
+      </div>
     </div>
   )
 }

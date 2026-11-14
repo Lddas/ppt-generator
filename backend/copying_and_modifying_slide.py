@@ -192,9 +192,30 @@ def _materialize_placeholder(el, shp, master=None):
             nv_pr.remove(ph)
 
 
+MAX_IMAGE_SIDE = 2000  # px; the photos of the templates are much larger than a slide needs
+
+
+def _shrink(blob):
+    """Downscale a huge photo (smaller decks, less memory); small images are returned as is."""
+    try:
+        im = Image.open(io.BytesIO(blob))
+        if max(im.size) <= MAX_IMAGE_SIDE:
+            return blob
+        fmt = im.format
+        im.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.LANCZOS)
+        out = io.BytesIO()
+        if fmt == "PNG" and im.mode in ("RGBA", "LA", "P"):
+            im.save(out, "PNG", optimize=True)
+        else:
+            im.convert("RGB").save(out, "JPEG", quality=88, optimize=True)
+        return out.getvalue()
+    except Exception:
+        return blob
+
+
 def _copy_picture(new_slide, shp):
     """Re-add a picture (including pictures held in a placeholder) from its bytes."""
-    pic = new_slide.shapes.add_picture(io.BytesIO(shp.image.blob), shp.left, shp.top, shp.width, shp.height)
+    pic = new_slide.shapes.add_picture(io.BytesIO(_shrink(shp.image.blob)), shp.left, shp.top, shp.width, shp.height)
     pic.crop_left, pic.crop_right = shp.crop_left, shp.crop_right
     pic.crop_top, pic.crop_bottom = shp.crop_top, shp.crop_bottom
     return pic
@@ -346,9 +367,31 @@ def CopySlide(copyFromPres, slideIndex, pasteIntoPres):
     return _copy_slide(copyFromPres, slideIndex, pasteIntoPres)[0]
 
 
+_slice_table = None
+
+
+def _slices():
+    """(deck, 0-based slide) -> (slice file, position in it), from the entries of index.json."""
+    global _slice_table
+    if _slice_table is None:
+        _slice_table = {}
+        for entry in data.values():
+            if "index" not in entry:
+                continue
+            ppt, index, count = entry["ppt"], entry["index"], entry["nb_slides"]
+            path = os.path.join("slices", f"{os.path.splitext(ppt)[0]}__{index}_{count}.pptx")
+            for k in range(count):
+                _slice_table[(ppt, index - 1 + k)] = (path, k)
+    return _slice_table
+
+
 def NewSlide(index, link, outputPres):
-    """Copy slide `index` (0-based) of the template deck `link` into outputPres."""
-    return CopySlide(Presentation(link), index, outputPres)
+    """Copy slide `index` (0-based) of the template deck `link` into outputPres.
+    Uses the small per-entry deck made by build_slices.py when it exists, else the big deck."""
+    path, position = _slices().get((link, index), (None, None))
+    if path and os.path.exists(path):
+        return CopySlide(_load(path), position, outputPres)
+    return CopySlide(_load(link), index, outputPres)
 
 
 def set_room_count(slide, rooms):
@@ -498,7 +541,7 @@ def _put_picture(new_slide, el, blob):
     left, top = int(off.get('x')), int(off.get('y'))
     width, height = int(ext.get('cx')), int(ext.get('cy'))
     _remove(el)
-    pic = new_slide.shapes.add_picture(io.BytesIO(blob), left, top, width, height)
+    pic = new_slide.shapes.add_picture(io.BytesIO(_shrink(blob)), left, top, width, height)
     image_w, image_h = pic.image.size
     if image_w / image_h > width / height:
         pic.crop_left = pic.crop_right = (1 - (width / height) / (image_w / image_h)) / 2
@@ -573,13 +616,13 @@ def add_transport_slide(pasteIntoPres):
 
 def add_day_slide(pasteIntoPres, etapes, day_index, day_date):
     """One 'AGENDA JOUR' slide: a label and a photo for each step of the day (max 5)."""
-    if len(etapes) > len(DA_DAY_LABELS):
+    if len([e for e in etapes if e]) > len(DA_DAY_LABELS):
         print(f"WARNING: day {day_index} has {len(etapes)} steps, only {len(DA_DAY_LABELS)} fit on the slide")
     slide, ph = _copy_slide(_load(NEW_DA_FILE), DA_DAY_SLIDE, pasteIntoPres)
     _fill(ph, DA_DAY_TITLE, f"JOUR {day_index}")
     _fill(ph, DA_DAY_SUBTITLE, day_date)
     for slot, (label_idx, image_idx) in enumerate(zip(DA_DAY_LABELS, DA_DAY_IMAGES)):
-        if slot >= len(etapes):
+        if slot >= len(etapes) or not etapes[slot]:
             _drop(ph, label_idx, image_idx)
             continue
         etape = etapes[slot]
@@ -614,7 +657,7 @@ def make_agenda(pasteIntoPres, activities_by_day, day_dates=None):
             _fill(ph, date_idx, date)
             _drop(ph, weekday_idx)
             for cell, idx in enumerate(cells):
-                if cell < len(chunk[row]):
+                if cell < len(chunk[row]) and chunk[row][cell]:
                     label = chunk[row][cell]
                     _fill(ph, idx, label, _fit_size(label))
                 else:

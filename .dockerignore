@@ -1,0 +1,14 @@
+.git
+.claude
+frontend
+PPTX_PREF
+dist
+build
+backend/.venv
+backend/venv
+backend/slices
+backend/*.pptx
+backend/__pycache__
+backend/main.exe
+**/__pycache__
+**/.DS_Store
