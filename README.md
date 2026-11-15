@@ -46,3 +46,14 @@ cd backend && python build_slices.py   # optionnel : découpe les gros modèles,
 3. Le `Dockerfile` télécharge et décompresse le bundle au build (`fetch_assets.py`). Il échoue volontairement tant qu'une URL est encore `REPLACE_WITH_PRESIGNED_URL`.
 
 Le serveur n'ouvre que de petits fichiers : mémoire et temps de génération faibles.
+
+## Assistant (Gemini Flash)
+
+La page d'accueil propose un assistant qui pose des questions et remplit le formulaire (texte ou dictée avec le micro). Il appelle Gemini Flash **depuis le serveur** (`POST /agent`) : la clé ne doit jamais être dans le site, dont le code est public.
+
+- Sur Render, onglet **Environment** : ajouter `GEMINI_API_KEY` (clé créée sur [aistudio.google.com/apikey](https://aistudio.google.com/apikey)). Optionnel : `GEMINI_MODEL` (par défaut `gemini-flash-latest`) et `APP_PASSWORD` (le mot de passe du site, par défaut celui du code).
+- En local : `GEMINI_API_KEY=... uvicorn main:app --port 8000` dans `backend/`.
+- Les noms proposés par l'assistant sont vérifiés côté serveur contre `index.json` (hôtels, restaurants, activités) : rien d'inventé n'arrive dans le formulaire.
+- Sans clé, l'assistant répond qu'il n'est pas configuré et le formulaire manuel reste utilisable.
+- Test sans appeler Gemini : `cd backend && python test_agent.py`.
+- La dictée utilise la reconnaissance vocale du navigateur (Chrome, Edge, Safari) : elle ne demande aucune clé.

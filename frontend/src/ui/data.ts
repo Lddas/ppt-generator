@@ -91,3 +91,56 @@ export function datesLabel(startDate: string, numDays: number): string {
   }
   return `${first.toLocaleDateString('fr-FR', FR_MONTHS_ONLY)} au ${last.toLocaleDateString('fr-FR', FR_MONTHS_ONLY)} ${year}`
 }
+
+export type Form = {
+  client: string
+  eventTitle: string
+  startDate: string
+  datesOverride: string | null
+  numDays: number
+  numNights: number | null
+  numPeople: number
+  hotels: HotelEntry[]
+  days: DayPlan[]
+}
+
+export const initialForm = (): Form => ({
+  client: '',
+  eventTitle: '',
+  startDate: '',
+  datesOverride: null,
+  numDays: 3,
+  numNights: null,
+  numPeople: 20,
+  hotels: [],
+  days: [emptyDay(), emptyDay(), emptyDay()],
+})
+
+
+export const SLOT_KEYS = ['breakfast', 'morning', 'lunch', 'afternoon', 'dinner']
+
+/** The form after applying what the assistant understood (already checked by the server). */
+export function applyPatch(form: Form, patch: any): Form {
+  const next: Form = { ...form }
+  for (const key of ['client', 'eventTitle', 'numDays', 'numNights', 'numPeople'] as const) {
+    if (patch[key] !== undefined) (next as any)[key] = patch[key]
+  }
+  if (patch.startDate !== undefined) {
+    next.startDate = patch.startDate
+    next.datesOverride = null
+  }
+  if (patch.hotels) next.hotels = patch.hotels
+  next.days = Array.from({ length: next.numDays }, (_, i) => next.days[i] || emptyDay())
+  for (const entry of patch.days || []) {
+    const i = entry.day - 1
+    if (i < 0 || i >= next.days.length) continue
+    const day = { ...next.days[i], slots: [...next.days[i].slots] }
+    for (const [key, value] of Object.entries(entry.slots || {})) {
+      const k = SLOT_KEYS.indexOf(key)
+      if (k >= 0) day.slots[k] = value as string
+    }
+    if (entry.notes) day.notes = entry.notes
+    next.days[i] = day
+  }
+  return next
+}

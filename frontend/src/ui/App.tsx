@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './Icon'
+import AgentScreen, { ChatMessage } from './Agent'
 import {
-  DayPlan, GROUPS, HOTEL_OPTIONS, HotelEntry, SLOTS, dayLabel, datesLabel, emptyDay,
+  DayPlan, Form, GROUPS, HOTEL_OPTIONS, HotelEntry, SLOTS, applyPatch, dayLabel, datesLabel, emptyDay, initialForm,
 } from './data'
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
@@ -22,30 +23,6 @@ const STAGES = [
   'Construction du programme…',
   'Finalisation du fichier…',
 ]
-
-type Form = {
-  client: string
-  eventTitle: string
-  startDate: string
-  datesOverride: string | null
-  numDays: number
-  numNights: number | null
-  numPeople: number
-  hotels: HotelEntry[]
-  days: DayPlan[]
-}
-
-const initialForm = (): Form => ({
-  client: '',
-  eventTitle: '',
-  startDate: '',
-  datesOverride: null,
-  numDays: 3,
-  numNights: null,
-  numPeople: 20,
-  hotels: [{ hotelName: HOTEL_OPTIONS[0], rooms: 10 }],
-  days: [emptyDay(), emptyDay(), emptyDay()],
-})
 
 function loadDraft(): Form {
   try {
@@ -115,13 +92,13 @@ function Counter({ id, value, min, max, onChange, label }: {
   const clamp = (n: number) => Math.min(max ?? Infinity, Math.max(min, n))
   return (
     <div className="flex items-center gap-2">
-      <button type="button" className="btn btn-ghost !px-0 w-11" aria-label={`Moins de ${label}`}
+      <button type="button" className="btn btn-ghost !px-0 w-12" aria-label={`Moins de ${label}`}
         onClick={() => onChange(clamp(value - 1))} disabled={value <= min}>
         <Icon name="minus" className="w-4 h-4" />
       </button>
       <input id={id} type="number" inputMode="numeric" className="field text-center" value={value} min={min} max={max}
         onChange={e => onChange(clamp(Number(e.target.value) || min))} />
-      <button type="button" className="btn btn-ghost !px-0 w-11" aria-label={`Plus de ${label}`}
+      <button type="button" className="btn btn-ghost !px-0 w-12" aria-label={`Plus de ${label}`}
         onClick={() => onChange(clamp(value + 1))} disabled={max !== undefined && value >= max}>
         <Icon name="plus" className="w-4 h-4" />
       </button>
@@ -294,6 +271,9 @@ function StepHotels({ form, set }: { form: Form; set: Setter }) {
     set({ hotels: form.hotels.map((h, k) => (k === i ? { ...h, ...patch } : h)) })
   return (
     <div>
+      {form.hotels.length === 0 && (
+        <p className="inner p-5 text-[var(--muted)]">Aucun hôtel pour l’instant. Ajoute-en un pour continuer.</p>
+      )}
       <ul className="space-y-3">
         {form.hotels.map((h, i) => (
           <li key={i} className="inner rise p-3 grid gap-3 sm:grid-cols-[1fr_180px_auto] items-end">
@@ -307,7 +287,6 @@ function StepHotels({ form, set }: { form: Form; set: Setter }) {
               <Counter id={`rooms-${i}`} value={h.rooms} min={1} label="chambres" onChange={n => update(i, { rooms: n })} />
             </Field>
             <button type="button" className="icon-btn mb-1" aria-label={`Retirer l’hôtel ${i + 1}`}
-              disabled={form.hotels.length === 1}
               onClick={() => set({ hotels: form.hotels.filter((_, k) => k !== i) })}>
               <Icon name="trash" className="w-4 h-4" />
             </button>
@@ -372,6 +351,9 @@ function StepProgram({ form, set, day, setDay }: {
             <select id={`slot-${k}`} className="select" value={plan.slots[k]}
               onChange={e => update({ slots: plan.slots.map((s, i) => (i === k ? e.target.value : s)) })}>
               <option value="">— Aucun —</option>
+              {plan.slots[k] && !slot.groups.some(g => GROUPS[g].includes(plan.slots[k])) && (
+                <option value={plan.slots[k]}>{plan.slots[k]}</option>
+              )}
               {slot.groups.map(g => (
                 <optgroup key={g} label={g}>
                   {GROUPS[g].map(o => <option key={g + o} value={o}>{o}</option>)}
@@ -426,7 +408,7 @@ function StepProgram({ form, set, day, setDay }: {
 
 function Summary({ form, nights, datesText, hasLogo }: { form: Form; nights: number; datesText: string; hasLogo: boolean }) {
   return (
-    <aside className="card p-5 lg:sticky lg:top-24" aria-label="Récapitulatif">
+    <aside className="card p-5 lg:sticky lg:top-28" aria-label="Récapitulatif">
       <h2 className="label !mb-4">Votre présentation</h2>
       <dl className="space-y-4 text-sm">
         <div>
@@ -445,6 +427,7 @@ function Summary({ form, nights, datesText, hasLogo }: { form: Form; nights: num
         {datesText && <p className="text-[var(--muted)]">{datesText}</p>}
         <div>
           <dt className="text-xs text-[var(--muted)] mb-1">Hôtels</dt>
+          {form.hotels.length === 0 && <dd className="text-[var(--muted)]">—</dd>}
           {form.hotels.map((h, i) => (
             <dd key={i} className="flex justify-between gap-2 py-0.5">
               <span className="truncate">{h.hotelName}</span><span className="text-[var(--muted)] flex-none">{h.rooms} ch.</span>
@@ -474,6 +457,9 @@ function Summary({ form, nights, datesText, hasLogo }: { form: Form; nights: num
 export default function App() {
   const [authed, setAuthed] = useState(() => sessionStorage.getItem(AUTH_KEY) === '1')
   const [form, setForm] = useState<Form>(loadDraft)
+  // A fresh visit starts with the assistant; a saved draft resumes in the form
+  const [mode, setMode] = useState<'agent' | 'form'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
+  const [chat, setChat] = useState<ChatMessage[]>([])
   const [step, setStep] = useState(0)
   const [maxReached, setMaxReached] = useState(0)
   const [day, setDay] = useState(0)
@@ -553,6 +539,7 @@ export default function App() {
   function reset() {
     if (result) URL.revokeObjectURL(result.url)
     setResult(null); setError(null); setForm(initialForm()); clearLogo(); setStep(0); setMaxReached(0); setDay(0)
+    setChat([]); setMode('agent')
   }
 
   async function generate() {
@@ -600,16 +587,23 @@ export default function App() {
 
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />
 
+  const summary = <Summary form={form} nights={nights} datesText={datesText} hasLogo={!!logoFile} />
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--cream)]">
-        <div className="mx-auto flex max-w-[1180px] items-center justify-between px-5 py-3">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-5 py-3">
           <div className="flex items-center gap-3">
-            <img src="/logo_1.png" alt="Preference Events" className="h-11 w-auto mix-blend-multiply" />
+            <img src="/logo_1.png" alt="Preference Events" className="h-14 w-auto mix-blend-multiply" />
             <span className="hidden sm:block h-5 w-px bg-[var(--line)]" />
-            <span className="hidden sm:block text-sm text-[var(--muted)]">Générateur de présentations</span>
+            <span className="hidden sm:block text-base text-[var(--muted)]">Générateur de présentations</span>
           </div>
           <div className="flex items-center gap-1">
+            {mode === 'form' && (
+              <button type="button" className="btn btn-quiet" onClick={() => setMode('agent')}>
+                <Icon name="chat" className="w-4 h-4" /><span className="hidden sm:inline">Assistant</span>
+              </button>
+            )}
             <button type="button" className="btn btn-quiet" onClick={() => { if (confirm('Effacer le formulaire et recommencer ?')) reset() }}>
               <Icon name="refresh" className="w-4 h-4" /><span className="hidden sm:inline">Nouveau</span>
             </button>
@@ -621,15 +615,28 @@ export default function App() {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-[1180px] gap-6 px-5 py-8 lg:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[200px_minmax(0,1fr)_280px]">
-        <div className="lg:sticky lg:top-24 lg:self-start">
+      {mode === 'agent' ? (
+        <AgentScreen
+          form={form}
+          messages={chat}
+          setMessages={setChat}
+          onPatch={patch => setForm(f => applyPatch(f, patch))}
+          apiUrl={API_URL}
+          password={WEBSITE_PASSWORD}
+          onManual={() => setMode('form')}
+          onReview={() => { setMode('form'); setMaxReached(3); setStep(3) }}
+          summary={summary}
+        />
+      ) : (
+      <div className="mx-auto grid max-w-[1400px] gap-6 px-5 py-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[12rem_minmax(0,1fr)_19rem]">
+        <div className="lg:sticky lg:top-28 lg:self-start">
           <Stepper current={step} maxReached={maxReached} goTo={goTo} />
         </div>
 
         <main>
-          <section className="card p-6 sm:p-8 rise" key={step} aria-labelledby="step-title">
+          <section className="card p-6 sm:p-10 rise" key={step} aria-labelledby="step-title">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--burgundy)]">Étape {step + 1} sur {STEPS.length}</p>
-            <h1 id="step-title" className="font-display mt-1 text-3xl font-semibold">
+            <h1 id="step-title" className="font-display mt-1 text-4xl font-semibold">
               {['Informations sur l’événement', 'Hébergement', 'Programme', 'Votre présentation'][step]}
             </h1>
             <p className="mt-1.5 mb-7 text-[var(--muted)]">
@@ -650,7 +657,7 @@ export default function App() {
 
             {step === 3 && (
               <div>
-                <div className="xl:hidden mb-6"><Summary form={form} nights={nights} datesText={datesText} hasLogo={!!logoFile} /></div>
+                <div className="xl:hidden mb-6">{summary}</div>
 
                 {busy && (
                   <div className="inner p-5 rise" role="status" aria-live="polite">
@@ -712,8 +719,9 @@ export default function App() {
           </div>
         </main>
 
-        <div className="hidden xl:block"><Summary form={form} nights={nights} datesText={datesText} hasLogo={!!logoFile} /></div>
+        <div className="hidden xl:block">{summary}</div>
       </div>
+      )}
     </div>
   )
 }

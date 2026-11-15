@@ -5,7 +5,7 @@ import tempfile
 import traceback
 from typing import List
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, Header, Request, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
@@ -15,6 +15,10 @@ from pptx import Presentation
 from pptx.util import Inches
 import json
 import importlib
+import time
+from collections import defaultdict, deque
+
+import agent as agent_module
 
 
 ALLOWED_HOTELS = {
@@ -170,14 +174,20 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
             slide_index = data[hotel_name]["index"]
             nb_slides = data[hotel_name]["nb_slides"]
             print(f"DEBUG: Adding hotel slides: {hotel_name}, index {slide_index}, nb_slides {nb_slides}")
+            room_slides, rooms_written = [], False
             for i in range(slide_index - 1, slide_index + nb_slides - 1):
                 try:
                     slide = gen.NewSlide(i, link, output_pres)
                     if h.get("rooms"):
-                        gen.set_room_count(slide, h["rooms"])
+                        rooms_written = gen.set_room_count(slide, h["rooms"]) or rooms_written
+                        if any(sh.has_text_frame and sh.text_frame.text.strip().upper() == "LES CHAMBRES" for sh in slide.shapes):
+                            room_slides.append(slide)
                 except Exception as e:
                     print(f"DEBUG: Error adding slide {i} for {hotel_name}: {e}")
                     pass
+            # No "Vous aurez à votre disposition N chambres" in the hotel text: add the line
+            if h.get("rooms") and not rooms_written and room_slides:
+                gen.add_room_count_line(room_slides[0], h["rooms"])
         
         # Force garbage collection after hotel slides
         gc.collect()
@@ -369,6 +379,31 @@ async def generate(
             "Content-Disposition": f'attachment; filename="{filename}"'
         },
     )
+
+
+AGENT_PASSWORD = os.environ.get("APP_PASSWORD", "PREF-2025")  # same gate as the website
+_agent_calls = defaultdict(deque)
+
+
+@app.post("/agent")
+def agent(payload: dict, request: Request, x_app_password: str = Header(None)):
+    """One turn with the form-filling assistant (Gemini Flash). The key never leaves the server."""
+    if x_app_password != AGENT_PASSWORD:
+        raise HTTPException(status_code=401, detail="Accès refusé.")
+    # at most 40 turns per 10 minutes per visitor: the Gemini key is paid for by us
+    visitor = (request.headers.get("x-forwarded-for") or request.client.host or "?").split(",")[0].strip()
+    calls = _agent_calls[visitor]
+    now = time.time()
+    while calls and now - calls[0] > 600:
+        calls.popleft()
+    if len(calls) >= 40:
+        raise HTTPException(status_code=429, detail="Trop de messages, réessaie dans quelques minutes.")
+    calls.append(now)
+    try:
+        names = agent_module.catalog(load_index_json("."), ALLOWED_HOTELS)
+        return agent_module.respond(payload.get("messages") or [], payload.get("form") or {}, names)
+    except agent_module.AgentError as error:
+        raise HTTPException(status_code=error.status, detail=error.message)
 
 
 @app.get("/")
