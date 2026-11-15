@@ -111,7 +111,7 @@ export class VoiceDetector {
         const rms = Math.sqrt(data.reduce((sum, x) => sum + x * x, 0) / data.length)
         this.level = rms
         // what the micro hears when nobody talks (room noise, a faint echo of the assistant): the voice must clearly exceed it
-        const loud = rms > Math.max(0.02, this.floor * 3)
+        const loud = rms > Math.max(0.015, this.floor * 2)
         if (!loud) this.floor = this.floor * 0.95 + rms * 0.05
         this.loud = loud && this.onVoice && Date.now() - this.armedAt > 350 ? this.loud + 1 : 0
         if (this.loud >= 3 && this.onVoice) { const cb = this.onVoice; this.onVoice = null; cb() } // ~150 ms of voice

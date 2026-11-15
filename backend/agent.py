@@ -17,8 +17,8 @@ import urllib.parse
 import urllib.request
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-DEFAULT_MODEL = "gemini-3.5-flash"  # override with GEMINI_MODEL
-FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"]  # when Google is overloaded
+DEFAULT_MODEL = "gemini-3.5-flash-lite"  # ~1.5 s a turn; override with GEMINI_MODEL
+FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]  # when Google is overloaded or the quota is spent
 SLOT_KEYS = ["breakfast", "morning", "lunch", "afternoon", "dinner"]
 SLOT_LABELS = {"breakfast": "petit-déjeuner", "morning": "matinée", "lunch": "déjeuner",
                "afternoon": "après-midi", "dinner": "dîner"}

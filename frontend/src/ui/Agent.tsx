@@ -11,7 +11,7 @@ export type ChatMessage = { role: 'user' | 'model' | 'error'; text: string; choi
 const TEXTS = {
   fr: {
     greeting: 'Salut ! Je suis l’assistant Preference Events. Raconte-moi ton séminaire et je remplis tout à ta place. Quand tu hésites (hôtel, restaurant, activité…), demande-moi les options et je te les montre. On commence : quel est le nom du client ?',
-    thinking: 'Je réfléchis…', talking: 'Je parle… (coupe-moi si tu veux)', listening: 'Je t’écoute, parle…', dictating: 'Je t’écoute…', typing: 'Écris ou dicte ta réponse…',
+    thinking: 'Je réfléchis…', talking: 'Je parle… (parle ou clique sur la bulle pour me couper)', listening: 'Je t’écoute, parle…', dictating: 'Je t’écoute…', typing: 'Écris ou dicte ta réponse…',
     conversation: 'Conversation', stop: 'Arrêter', see: 'Voir les',
     allDone: 'Tout est rempli.', doneHelp: 'Ouvre le récapitulatif pour tout relire, modifier si besoin, puis générer la présentation. Tu peux aussi continuer à ajuster ici.',
     recap: 'Voir le récapitulatif', micBlocked: 'Le micro est bloqué. Autorise-le pour ce site dans les réglages du navigateur.',
@@ -19,7 +19,7 @@ const TEXTS = {
   },
   en: {
     greeting: 'Hi! I’m the Preference Events assistant. Tell me about your seminar and I’ll fill everything in for you. When you’re unsure (hotel, restaurant, activity…), ask me for the options and I’ll show them. Let’s start: what’s the client’s name?',
-    thinking: 'Thinking…', talking: 'Speaking… (talk to interrupt)', listening: 'I’m listening, go ahead…', dictating: 'Listening…', typing: 'Type or dictate your answer…',
+    thinking: 'Thinking…', talking: 'Speaking… (talk or click the orb to interrupt)', listening: 'I’m listening, go ahead…', dictating: 'Listening…', typing: 'Type or dictate your answer…',
     conversation: 'Conversation', stop: 'Stop', see: 'See the',
     allDone: 'Everything is filled in.', doneHelp: 'Open the summary to review everything, edit if needed, then generate the presentation. You can also keep adjusting here.',
     recap: 'See the summary', micBlocked: 'The microphone is blocked. Allow it for this site in your browser settings.',
@@ -72,6 +72,11 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   const speaker = useRef<Speaker | null>(null)
   const detector = useRef(new VoiceDetector())
   const spokenId = useRef(0)
+  const guard = useRef<string | null>(null) // what the assistant is saying, while it talks
+  const skipResults = useRef(0)
+  const resultCount = useRef(0)
+  const recognitionOn = useRef(false)
+  const interruptRef = useRef<() => void>(() => {})
   const getLevel = React.useCallback(() => detector.current.level, [])
   if (!speaker.current) speaker.current = new Speaker(apiUrl, password)
 
@@ -85,6 +90,11 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
     const last = log.querySelector<HTMLElement>('[data-last-choices]')
     log.scrollTo({ top: last ? Math.max(last.offsetTop - 16, 0) : log.scrollHeight, behavior: 'smooth' })
   }, [messages, busy, done, opened])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (conversationRef.current && guard.current !== null && (e.key === ' ' || e.key === 'Escape')) { e.preventDefault(); interruptRef.current() } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   useEffect(() => { speaker.current?.stop(); recognition.current?.abort(); setSpeaking(false); setListening(false) }, [lang])
   useEffect(() => () => { conversationRef.current = false; recognition.current?.abort(); speaker.current?.stop(); detector.current.close() }, [])
 
@@ -134,41 +144,72 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   }
   sendRef.current = send
 
+  interruptRef.current = interrupt
+
   /** Reads a reply with the Gemini voice. In conversation mode the person can talk over it, and the micro reopens afterwards. */
+  const words = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().match(/[a-z0-9]+/g) || []
+
+  /** Is what the micro heard just the assistant's own voice coming back through the speakers? */
+  function isEcho(heard: string, spoken: string) {
+    const said = new Set(words(spoken))
+    const mine = words(heard)
+    return mine.length > 0 && mine.filter(w => said.has(w)).length / mine.length >= 0.6
+  }
+
+  /** The person talks over the assistant (voice, tap on the orb, space bar): it stops and the listening goes on. */
+  function interrupt() {
+    spokenId.current++
+    speaker.current?.stop()
+    detector.current.disarm()
+    setSpeaking(false)
+    guard.current = null
+    skipResults.current = resultCount.current
+    if (!recognitionOn.current) startListening()
+  }
+
+  /** Reads a reply with the Gemini voice. In conversation mode the micro stays open while it talks, so the person can cut in. */
   function speakAloud(text: string) {
     const id = ++spokenId.current
-    let interrupted = false
     setSpeaking(true)
     if (conversationRef.current) {
-      detector.current.arm(() => {
-        interrupted = true
-        speaker.current?.stop()
-        setSpeaking(false)
-        startListening()
-      })
+      detector.current.arm(interrupt)
+      startListening(text)
     }
     speaker.current!.say(text, lang).then(() => {
-      if (id !== spokenId.current) return // a newer reply took over
+      if (id !== spokenId.current) return // interrupted, or a newer reply took over
       detector.current.disarm()
       setSpeaking(false)
-      if (!interrupted && conversationRef.current) startListening()
+      if (conversationRef.current) startListening()
     })
   }
 
-  function startListening() {
+  /** With `guardText` (what the assistant is saying) it listens during the assistant's speech and only reacts to words that are not its own. */
+  function startListening(guardText?: string) {
     if (!SpeechRecognitionApi || busyRef.current) return
-    speaker.current?.stop()
+    if (!guardText) speaker.current?.stop()
     recognition.current?.abort()
     const r = new SpeechRecognitionApi()
     r.lang = lang === 'en' ? 'en-US' : 'fr-FR'
     r.interimResults = true
-    r.continuous = false
+    r.continuous = !!guardText
+    guard.current = guardText ?? null
+    skipResults.current = 0
+    resultCount.current = 0
     let heard = false
+    r.onstart = () => { recognitionOn.current = true }
     r.onresult = (event: any) => {
+      resultCount.current = event.results.length
+      const latest = event.results[event.results.length - 1]
+      if (guard.current !== null) {
+        if (isEcho(latest[0].transcript, guard.current)) { skipResults.current = event.results.length; return }
+        interrupt()
+        skipResults.current = Math.max(0, event.results.length - 1) // keep the words that cut in
+      }
       let text = ''
-      for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript
+      for (let i = skipResults.current; i < event.results.length; i++) text += event.results[i][0].transcript
+      if (!text.trim()) return
       setInput(text)
-      if (event.results[event.results.length - 1].isFinal) { heard = true; sendRef.current(text) }
+      if (latest.isFinal && !busyRef.current) { heard = true; sendRef.current(text); r.stop() }
     }
     r.onerror = (event: any) => {
       if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
@@ -178,12 +219,16 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
       }
     }
     r.onend = () => {
+      recognitionOn.current = false
       setListening(false)
-      // in conversation mode a silence just restarts the listening
-      if (conversationRef.current && !heard && !busyRef.current) setTimeout(() => { if (conversationRef.current && !busyRef.current) startListening() }, 400)
+      if (recognition.current !== r) return // replaced by a newer one
+      // in conversation mode a silence just restarts the listening (still guarded while the assistant talks)
+      if (conversationRef.current && !heard && !busyRef.current) {
+        setTimeout(() => { if (conversationRef.current && !busyRef.current && recognition.current === r) startListening(guard.current ?? undefined) }, 300)
+      }
     }
     recognition.current = r
-    setListening(true)
+    setListening(!guardText)
     try { r.start() } catch { setListening(false) }
   }
 
@@ -278,7 +323,9 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
 
         {conversation ? (
           <div className="flex items-center gap-4 border-t border-[var(--line)] px-5 py-4 sm:px-6" role="status" aria-live="polite">
-            <Orb state={busy ? 'thinking' : speaking ? 'speaking' : 'listening'} getLevel={getLevel} />
+            <button type="button" onClick={() => { if (speaking) interrupt() }} className="rounded-full" aria-label={tt('Interrompre', 'Interrupt')} title={tt('Clique pour interrompre', 'Click to interrupt')}>
+              <Orb state={busy ? 'thinking' : speaking ? 'speaking' : 'listening'} getLevel={getLevel} />
+            </button>
             <p className="min-w-0 flex-1 truncate text-[15px] text-[var(--muted)]">
               {input || (busy ? t.thinking : speaking ? t.talking : t.listening)}
             </p>
