@@ -185,7 +185,7 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
 
       <main className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-sm rise">
-          <img src="/logo_1.png" alt="Preference Events" className="h-16 w-auto mb-8 lg:hidden mix-blend-multiply -ml-3" />
+          <span className="mb-8 inline-block self-start rounded-[14px] bg-white p-1.5 shadow-sm lg:hidden"><img src="/logo_1.png" alt="Preference Events" className="h-14 w-auto" /></span>
           <h2 className="font-display text-3xl font-semibold">Connexion</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">Accès réservé à l’équipe Preference Events.</p>
           <div className="mt-8">
@@ -607,7 +607,7 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--cream)]">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-5 py-3">
           <div className="flex items-center gap-3">
-            <img src="/logo_1.png" alt="Preference Events" className="h-14 w-auto mix-blend-multiply" />
+            <span className="rounded-[12px] bg-white p-1 shadow-sm"><img src="/logo_1.png" alt="Preference Events" className="h-12 w-auto" /></span>
             <span className="hidden sm:block h-5 w-px bg-[var(--line)]" />
             <span className="hidden sm:block text-base text-[var(--muted)]">Générateur de présentations</span>
           </div>
