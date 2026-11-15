@@ -844,6 +844,52 @@ DA_FLIGHT_LEGS = [
 FLIGHT_DURATION = "3h30"  # Paris - Marrakech, nearly always the same; edited by hand when it is not
 
 
+# « Plusieurs plans de vols »: one slide per direction, up to 5 departure cities (layout of the design file).
+MULTI_FLIGHT_LAYOUT = "PLAN DE TRANSPORT_ALLER OU RETOUR {}"  # 2 to 5 rows
+MULTI_FLIGHT_ROWS = [  # per row: city + date (left box), departure / arrival (timeline), duration, "direct"
+    {"city": 20, "date": 19, "departure": 21, "arrival": 22, "duration": 27, "direct": 28},
+    {"city": 32, "date": 31, "departure": 30, "arrival": 29, "duration": 33, "direct": 34},
+    {"city": 38, "date": 37, "departure": 36, "arrival": 35, "duration": 39, "direct": 40},
+    {"city": 44, "date": 43, "departure": 42, "arrival": 41, "duration": 45, "direct": 46},
+    {"city": 50, "date": 49, "departure": 48, "arrival": 47, "duration": 51, "direct": 52},
+]
+
+
+def parse_cities(text):
+    """« Paris, Lyon ; Nantes » -> ['PARIS', 'LYON', 'NANTES'] (max 5, no duplicates)."""
+    cities = []
+    for city in re.split(r"[,;\n]+", text or ""):
+        city = city.strip().upper()
+        if city and city not in cities:
+            cities.append(city)
+    return cities[:5]
+
+
+def add_multi_flight_slides(pasteIntoPres, cities, outbound_date="", return_date=""):
+    """Flight plans from several cities: an outbound and a return slide, one row per city.
+    Times are not known here: they are left for the team to fill in by hand."""
+    template = Presentation(os.path.join(os.path.dirname(os.path.abspath(__file__)), NEW_DA_FILE))
+    layout_name = MULTI_FLIGHT_LAYOUT.format(min(max(len(cities), 2), 5))
+    layout = next(l for l in template.slide_layouts if l.name == layout_name)
+    slides = []
+    for title, date, outbound in (("AVION ALLER", outbound_date, True), ("AVION RETOUR", return_date, False)):
+        template.slides.add_slide(layout)
+        slide, ph = _copy_slide(template, len(template.slides) - 1, pasteIntoPres)
+        _fill(ph, 15, title)
+        for k, row in enumerate(MULTI_FLIGHT_ROWS):
+            if k >= len(cities):
+                _drop(ph, *row.values())
+                continue
+            origin, destination = (cities[k], "MARRAKECH") if outbound else ("MARRAKECH", cities[k])
+            _fill(ph, row["city"], cities[k])
+            _fill(ph, row["date"], date) if date else _drop(ph, row["date"])
+            _fill(ph, row["departure"], origin)
+            _fill(ph, row["arrival"], destination)
+            _drop(ph, row["duration"], row["direct"])
+        slides.append(slide)
+    return slides
+
+
 def _hotel_card(name):
     """Name (with stars) and main photo of a hotel, read from its first slide in the hotels deck."""
     entry = data.get(name) or {}
