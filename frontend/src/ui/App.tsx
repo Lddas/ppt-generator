@@ -6,9 +6,10 @@ import {
 } from './data'
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
-const WEBSITE_PASSWORD = 'PREF-2025'
 const DRAFT_KEY = 'pref-ppt-draft-v1'
-const AUTH_KEY = 'pref-ppt-auth'
+// The password is checked by the server (APP_PASSWORD); the tab only remembers what was typed.
+const AUTH_KEY = 'pref-ppt-pw'
+const getPassword = () => { try { return sessionStorage.getItem(AUTH_KEY) || '' } catch { return '' } }
 
 const STEPS = [
   { label: 'Événement', hint: 'Client et dates' },
@@ -141,15 +142,26 @@ function Stepper({ current, maxReached, goTo }: { current: number; maxReached: n
 function Login({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [checking, setChecking] = useState(false)
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (password === WEBSITE_PASSWORD) {
-      sessionStorage.setItem(AUTH_KEY, '1')
-      onSuccess()
-    } else {
-      setError('Mot de passe incorrect')
+    setChecking(true)
+    try {
+      const res = await fetch(`${API_URL}/login`, { method: 'POST', headers: { 'X-App-Password': password } })
+      if (res.ok) {
+        sessionStorage.setItem(AUTH_KEY, password)
+        onSuccess()
+        return
+      }
+      let detail = 'Mot de passe incorrect'
+      try { detail = (await res.json()).detail || detail } catch { /* not JSON */ }
+      setError(detail)
       setPassword('')
+    } catch {
+      setError('Le serveur ne répond pas (il se réveille peut-être, réessaie dans une minute).')
+    } finally {
+      setChecking(false)
     }
   }
 
@@ -183,8 +195,8 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
               aria-invalid={!!error} aria-describedby={error ? 'password-error' : undefined} />
             {error && <p id="password-error" role="alert" className="mt-2 text-sm text-[var(--danger)]">{error}</p>}
           </div>
-          <button type="submit" className="btn btn-primary w-full mt-6" disabled={!password}>
-            Accéder <Icon name="right" className="w-4 h-4" />
+          <button type="submit" className="btn btn-primary w-full mt-6" disabled={!password || checking}>
+            {checking ? 'Connexion…' : <>Accéder <Icon name="right" className="w-4 h-4" /></>}
           </button>
         </form>
       </main>
@@ -455,7 +467,7 @@ function Summary({ form, nights, datesText, hasLogo }: { form: Form; nights: num
 /* ───────────────────────── app ───────────────────────── */
 
 export default function App() {
-  const [authed, setAuthed] = useState(() => sessionStorage.getItem(AUTH_KEY) === '1')
+  const [authed, setAuthed] = useState(() => !!getPassword())
   const [form, setForm] = useState<Form>(loadDraft)
   // A fresh visit starts with the assistant; a saved draft resumes in the form
   const [mode, setMode] = useState<'agent' | 'form'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
@@ -565,7 +577,8 @@ export default function App() {
       }))))
       if (logoFile) fd.append('logo', logoFile)
 
-      const res = await fetch(`${API_URL}/generate`, { method: 'POST', body: fd, signal: controller.signal })
+      const res = await fetch(`${API_URL}/generate`, { method: 'POST', body: fd, headers: { 'X-App-Password': getPassword() }, signal: controller.signal })
+      if (res.status === 401) { sessionStorage.removeItem(AUTH_KEY); setAuthed(false); return }
       if (!res.ok) throw new Error(apiMessage(await res.text(), res.status))
       const blob = await res.blob()
       const filename = `presentation_marrakech_${(form.client || 'client').trim().replace(/[^a-zA-Z0-9_-]+/g, '_')}.pptx`
@@ -622,7 +635,7 @@ export default function App() {
           setMessages={setChat}
           onPatch={patch => setForm(f => applyPatch(f, patch))}
           apiUrl={API_URL}
-          password={WEBSITE_PASSWORD}
+          password={getPassword()}
           onManual={() => setMode('form')}
           onReview={() => { setMode('form'); setMaxReached(3); setStep(3) }}
           summary={summary}

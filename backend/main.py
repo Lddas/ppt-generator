@@ -1,4 +1,5 @@
 import io
+import hmac
 import os
 import shutil
 import tempfile
@@ -294,6 +295,8 @@ app.add_middleware(
 
 @app.post("/generate")
 async def generate(
+    request: Request,
+    x_app_password: str = Header(None),
     client: str = Form(...),
     eventTitle: str = Form(""),
     dates: str = Form(...),
@@ -304,6 +307,7 @@ async def generate(
     dayPlans: str = Form("[]"),  # JSON string
     logo: UploadFile = File(None),
 ):
+    require_password(request, x_app_password)
     if numDays < 1 or numDays > 8:
         raise HTTPException(status_code=422, detail="numDays must be between 1 and 8")
 
@@ -381,18 +385,42 @@ async def generate(
     )
 
 
-AGENT_PASSWORD = os.environ.get("APP_PASSWORD", "PREF-2025")  # same gate as the website
 _agent_calls = defaultdict(deque)
+_failed_logins = defaultdict(deque)
+
+
+def _visitor(request: Request) -> str:
+    return (request.headers.get("x-forwarded-for") or request.client.host or "?").split(",")[0].strip()
+
+
+def require_password(request: Request, given: str = None):
+    """The site password lives on the server (env APP_PASSWORD), never in the website code."""
+    expected = os.environ.get("APP_PASSWORD")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Mot de passe non configuré sur le serveur (APP_PASSWORD).")
+    visitor, now = _visitor(request), time.time()
+    failures = _failed_logins[visitor]
+    while failures and now - failures[0] > 600:
+        failures.popleft()
+    if len(failures) >= 10:
+        raise HTTPException(status_code=429, detail="Trop d'essais, réessaie dans quelques minutes.")
+    if not hmac.compare_digest((given or "").encode("utf-8"), expected.encode("utf-8")):
+        failures.append(now)
+        raise HTTPException(status_code=401, detail="Mot de passe incorrect.")
+
+
+@app.post("/login")
+def login(request: Request, x_app_password: str = Header(None)):
+    require_password(request, x_app_password)
+    return {"ok": True}
 
 
 @app.post("/agent")
 def agent(payload: dict, request: Request, x_app_password: str = Header(None)):
     """One turn with the form-filling assistant (Gemini Flash). The key never leaves the server."""
-    if x_app_password != AGENT_PASSWORD:
-        raise HTTPException(status_code=401, detail="Accès refusé.")
+    require_password(request, x_app_password)
     # at most 40 turns per 10 minutes per visitor: the Gemini key is paid for by us
-    visitor = (request.headers.get("x-forwarded-for") or request.client.host or "?").split(",")[0].strip()
-    calls = _agent_calls[visitor]
+    calls = _agent_calls[_visitor(request)]
     now = time.time()
     while calls and now - calls[0] > 600:
         calls.popleft()
