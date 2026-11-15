@@ -11,7 +11,7 @@ export type ChatMessage = { role: 'user' | 'model' | 'error'; text: string; choi
 const TEXTS = {
   fr: {
     greeting: 'Salut ! Je suis l’assistant Preference Events. Raconte-moi ton séminaire et je remplis tout à ta place. Quand tu hésites (hôtel, restaurant, activité…), demande-moi les options et je te les montre. On commence : quel est le nom du client ?',
-    thinking: 'Je réfléchis…', talking: 'Je parle… (parle ou clique sur la bulle pour me couper)', listening: 'Je t’écoute, parle…', dictating: 'Je t’écoute…', typing: 'Écris ou dicte ta réponse…',
+    thinking: 'Je réfléchis…', talking: 'Je parle… (parle ou clique sur la bulle pour me couper)', listening: 'Je t’écoute, parle…', dictating: 'Je t’écoute…', typing: 'Écris ou dicte…',
     conversation: 'Conversation', stop: 'Arrêter', see: 'Voir les',
     allDone: 'Tout est rempli.', doneHelp: 'Ouvre le récapitulatif pour tout relire, modifier si besoin, puis générer la présentation. Tu peux aussi continuer à ajuster ici.',
     recap: 'Voir le récapitulatif', voiceDown: 'La voix de l’assistant est indisponible pour le moment (quota Gemini atteint). Les réponses restent écrites, tu peux continuer à parler.', micBlocked: 'Le micro est bloqué. Autorise-le pour ce site dans les réglages du navigateur.',
@@ -19,7 +19,7 @@ const TEXTS = {
   },
   en: {
     greeting: 'Hi! I’m the Preference Events assistant. Tell me about your seminar and I’ll fill everything in for you. When you’re unsure (hotel, restaurant, activity…), ask me for the options and I’ll show them. Let’s start: what’s the client’s name?',
-    thinking: 'Thinking…', talking: 'Speaking… (talk or click the orb to interrupt)', listening: 'I’m listening, go ahead…', dictating: 'Listening…', typing: 'Type or dictate your answer…',
+    thinking: 'Thinking…', talking: 'Speaking… (talk or click the orb to interrupt)', listening: 'I’m listening, go ahead…', dictating: 'Listening…', typing: 'Type or dictate…',
     conversation: 'Conversation', stop: 'Stop', see: 'See the',
     allDone: 'Everything is filled in.', doneHelp: 'Open the summary to review everything, edit if needed, then generate the presentation. You can also keep adjusting here.',
     recap: 'See the summary', voiceDown: 'The assistant’s voice is unavailable right now (Gemini quota reached). Replies stay in writing, you can keep talking.', micBlocked: 'The microphone is blocked. Allow it for this site in your browser settings.',
@@ -278,12 +278,12 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
   }
 
   return (
-    <div className="mx-auto grid max-w-[1400px] items-start gap-6 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_21rem]">
-      <section className="card flex h-[calc(100vh-8.5rem)] min-h-[34rem] flex-col rise" aria-label="Assistant">
-        <header className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 py-3.5 sm:px-6">
+    <div className="mx-auto grid max-w-[1400px] grid-cols-[minmax(0,1fr)] items-start gap-4 px-3 py-4 sm:gap-6 sm:px-5 sm:py-8 lg:grid-cols-[minmax(0,1fr)_21rem]">
+      <section className="card flex h-[calc(100dvh-7rem)] min-h-[30rem] min-w-0 flex-col rise sm:h-[calc(100vh-8.5rem)] sm:min-h-[34rem]" aria-label="Assistant">
+        <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[var(--line)] px-4 py-3 sm:px-6 sm:py-3.5">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--burgundy)]">{tt('Assistant', 'Assistant')}</p>
-            <h1 className="font-display truncate text-xl font-semibold">{tt('Parle-moi de ton séminaire', 'Tell me about your seminar')}</h1>
+            <h1 className="font-display text-lg font-semibold sm:text-xl">{tt('Parle-moi de ton séminaire', 'Tell me about your seminar')}</h1>
           </div>
           <div className="flex flex-none gap-1.5">
             <button type="button" className="btn btn-quiet !min-h-[2.25rem] !px-3 text-sm" onClick={onReset}>
@@ -295,7 +295,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
           </div>
         </header>
 
-        <div ref={logRef} className="relative min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 sm:px-6" role="log" aria-live="polite">
+        <div ref={logRef} className="relative min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5" role="log" aria-live="polite">
           {shown.map((m, i) => (
             <div key={i} data-last-choices={m.choices && i === shown.length - 1 && !busy && (m.choices.open || opened.has(i) || m.choices.kind === 'logo') ? '' : undefined}
               className={`flex flex-col gap-3 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
@@ -340,7 +340,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
         </div>
 
         {conversation ? (
-          <div className="flex items-center gap-4 border-t border-[var(--line)] px-5 py-4 sm:px-6" role="status" aria-live="polite">
+          <div className="flex items-center gap-3 border-t border-[var(--line)] px-3 py-3 sm:gap-4 sm:px-6 sm:py-4" role="status" aria-live="polite">
             <button type="button" onClick={() => { if (speaking) interrupt() }} className="rounded-full" aria-label={tt('Interrompre', 'Interrupt')} title={tt('Clique pour interrompre', 'Click to interrupt')}>
               <Orb state={busy ? 'thinking' : speaking ? 'speaking' : 'listening'} getLevel={getLevel} />
             </button>
@@ -351,7 +351,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
             <button type="button" className="btn btn-primary !min-h-[2.5rem] !px-4" onClick={toggleConversation}>{t.stop}</button>
           </div>
         ) : (
-          <form className="border-t border-[var(--line)] px-5 py-3.5 sm:px-6" onSubmit={e => { e.preventDefault(); send(input) }}>
+          <form className="border-t border-[var(--line)] px-3 py-3 sm:px-6 sm:py-3.5" onSubmit={e => { e.preventDefault(); send(input) }}>
             <div className="flex items-end gap-2">
               <textarea
                 className="field min-h-[2.75rem] flex-1 resize-none text-[15px]"
