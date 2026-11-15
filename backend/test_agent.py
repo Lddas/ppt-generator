@@ -36,11 +36,18 @@ r = turn({"reply": "ok", "done": False, "form": {"startDate": "2026-13-45", "num
 assert r["patch"] == {}
 
 # done only counts when nothing essential is missing
-form = {"client": "A", "startDate": "2026-11-21", "numDays": 1, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
+form = {"client": "A", "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
         "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
 assert turn({"reply": "Prêt ?", "done": True}, form)["done"] is True
 form["days"] = [{"slots": ["", "", "", "", ""], "notes": []}]
 assert turn({"reply": "Prêt ?", "done": True}, form)["done"] is False
+
+# nothing is assumed: duration, people and rooms must be given before "done"
+bare = {"client": "A", "startDate": "2026-11-21", "numDays": None, "numPeople": None, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 0}],
+        "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
+missing = agent.missing_fields(bare)
+assert "nombre de jours" in missing and "nombre de personnes" in missing and "nombre de chambres" in missing
+assert turn({"reply": "Prêt ?", "done": True}, bare)["done"] is False
 
 # clearing a cell, and merging into a day
 merged = agent.merge(form, {"days": [{"day": 1, "slots": {"lunch": "DAR CHERIFA"}}]})

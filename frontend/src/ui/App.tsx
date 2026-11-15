@@ -532,7 +532,7 @@ function AppInner() {
   const [mode, setMode] = useState<'agent' | 'form' | 'recap'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
   const [chat, setChat] = useState<ChatMessage[]>([])
   // what the assistant has actually been told so far (the summary shows the rest as « à renseigner »)
-  const [known, setKnown] = useState<Set<string>>(new Set())
+  const [known, setKnown] = useState<Set<string>>(() => (loadDraft().client.trim() ? new Set(['client', 'eventTitle', 'startDate', 'numDays', 'numNights', 'numPeople', 'hotels', 'days']) : new Set()))
   const logoInput = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState(0)
   const [maxReached, setMaxReached] = useState(0)
@@ -547,7 +547,7 @@ function AppInner() {
   const [result, setResult] = useState<{ url: string; filename: string; size: number } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  const set: Setter = patch => setForm(f => ({ ...f, ...patch }))
+  const set: Setter = patch => { setForm(f => ({ ...f, ...patch })); setKnown(k => new Set([...k, ...Object.keys(patch)])) } // a manual edit counts as given
   const nights = form.numNights ?? Math.max(form.numDays - 1, 0)
   const datesText = form.datesOverride ?? datesLabel(form.startDate, form.numDays) // French: goes into the presentation
   const datesShown = form.datesOverride ?? datesLabel(form.startDate, form.numDays, locale)
@@ -708,6 +708,7 @@ function AppInner() {
       {mode === 'agent' ? (
         <AgentScreen
           form={form}
+          known={known}
           messages={chat}
           setMessages={setChat}
           onPatch={patch => { setForm(f => applyPatch(f, patch)); setKnown(k => new Set([...k, ...Object.keys(patch).filter(key => patch[key] != null && !(Array.isArray(patch[key]) && patch[key].length === 0))])) }}
