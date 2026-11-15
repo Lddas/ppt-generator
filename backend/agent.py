@@ -338,8 +338,21 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
             choices = {"kind": kind, "label": CHOICE_KINDS[kind], "options": names[kind], "open": opened}
         if choices:
             break
-    return {"reply": reply, "patch": patch, "done": bool(answer.get("done")) and not still_missing,
-            "missing": still_missing, "choices": choices}
+    done = bool(answer.get("done")) and not still_missing
+    # the logo drop zone must never depend on the model remembering to open it
+    last_user = next((m["text"] for m in reversed(turns) if m["role"] == "user"), "").lower()
+    if not form.get("hasLogo") and "logo" not in last_user and (choices is None or choices["kind"] == "logo"):
+        mentions = "logo" in reply.lower()
+        asked_before = any("logo" in str(m["text"]).lower() for m in turns if m["role"] == "model")
+        logo_choices = {"kind": "logo", "label": CHOICE_KINDS["logo"], "options": [], "open": True}
+        if mentions and "?" in reply:
+            choices = logo_choices
+        elif not still_missing and not mentions and not asked_before:
+            reply += " Do you have the client's logo? You can drop it here." if language == "en" else " Tu as le logo du client ? Tu peux le déposer ici."
+            choices, done = logo_choices, False
+    if choices and choices["kind"] == "logo":
+        done = False  # not finished while the logo question is open
+    return {"reply": reply, "patch": patch, "done": done, "missing": still_missing, "choices": choices}
 
 
 TTS_MODELS = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview"]
