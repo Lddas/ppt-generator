@@ -27,7 +27,7 @@ assert all(json.load(open("index.json", encoding="utf-8")).get(n, {}).get("ppt")
 
 # a valid patch is kept, names are normalised, unknown ones are rejected and reported
 r = turn({"reply": "Noté !", "done": False, "form": {
-    "client": " HOYA ", "startDate": "2026-11-21", "numDays": 3, "numPeople": 40,
+    "client": " HOYA ", "startDate": "2026-11-21", "numDays": 3, "numPeople": 40, "departureCities": "",
     "hotels": [{"hotelName": "barcelo palmeraie", "rooms": 14}, {"hotelName": "Hotel Inconnu", "rooms": 2}],
     "days": [{"day": 1, "morning": "quad", "lunch": "Dar Cherifa", "dinner": "PLAT QUI N'EXISTE PAS"}]}})
 assert r["patch"]["client"] == "HOYA" and r["patch"]["numDays"] == 3
@@ -51,7 +51,7 @@ def asked_turn(answer, form, history=ASKED):
     return agent.respond(history, form, NAMES, today="2026-11-14", api_key="k", model="m", caller=fake(answer))
 
 
-form = {"client": "A", "hasLogo": True, "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
+form = {"client": "A", "hasLogo": True, "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "departureCities": "", "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
         "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
 assert asked_turn({"reply": "Prêt ?", "done": True}, form)["done"] is True
 form["days"] = [{"slots": ["", "", "", "", ""], "notes": []}]
@@ -68,7 +68,7 @@ assert turn({"reply": "Prêt ?", "done": True}, bare)["done"] is False
 r = turn({"reply": "Tu as le logo du client ?", "done": False}, {"client": "A"})
 assert r["choices"] and r["choices"]["kind"] == "logo" and r["choices"]["open"] is True
 assert turn({"reply": "Le logo ? Sinon c'est prêt.", "done": True}, {"client": "A"})["done"] is False
-done_form = {"client": "A", "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
+done_form = {"client": "A", "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "departureCities": "", "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
              "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
 r = asked_turn({"reply": "Prêt !", "done": True}, done_form, BEFORE_LOGO)
 assert r["done"] is False and r["choices"]["kind"] == "logo" and "logo" in r["reply"]
@@ -136,7 +136,7 @@ r = turn({"reply": "ok", "done": False, "form": {"hotels": [{"hotelName": h, "ro
 assert len(r["patch"]["hotels"]) == 3
 
 # the breakfast question of the arrival day comes once the programme is filled
-full = {"client": "A", "startDate": "2026-12-12", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}, {"hotelName": "PARK HYATT", "rooms": 3}],
+full = {"client": "A", "startDate": "2026-12-12", "numDays": 1, "numPeople": 10, "departureCities": "", "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}, {"hotelName": "PARK HYATT", "rooms": 3}],
         "days": [{"slots": ["", "QUAD", "DAR CHERIFA", "SPA", "KABANA"], "notes": []}]}
 r = turn({"reply": "Programme prêt.", "done": True}, full)
 assert "petit-déjeuner" in r["reply"] and r["choices"]["kind"] == "breakfasts" and r["done"] is False
@@ -223,4 +223,9 @@ except agent.AgentError as error:
 patch, _ = agent.clean_patch({"departureCities": " Paris,lyon ;PARIS\nNantes, A, B, C"}, NAMES)
 assert patch["departureCities"] == "Paris, lyon, Nantes, A, B", patch
 assert agent.merge({}, patch)["departureCities"] == patch["departureCities"]
+# the departure city is asked before anything else is "done"
+nofly = {**form, "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
+del nofly["departureCities"]
+r = asked_turn({"reply": "Prêt ?", "done": True}, nofly)
+assert r["done"] is False and any("départ" in m for m in r["missing"]), r
 print("test_agent: ok")

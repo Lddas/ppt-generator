@@ -982,11 +982,11 @@ def add_hotel_proposals(pasteIntoPres, hotels):
             paragraph.insert(0, spacing)
 
 
-def add_transport_slide(pasteIntoPres, outbound_date="", return_date=""):
+def add_transport_slide(pasteIntoPres, outbound_date="", return_date="", city="PARIS"):
     """Flight plan Paris - Marrakech, filled with what is known. Dates are "JJ.MM.AAAA" ("" = left blank)."""
     slide, ph = _copy_slide(_load(NEW_DA_FILE), DA_TRANSPORT_SLIDE, pasteIntoPres)
-    for leg, (origin, destination, date) in zip(DA_FLIGHT_LEGS, [("PARIS", "MARRAKECH", outbound_date),
-                                                                  ("MARRAKECH", "PARIS", return_date)]):
+    for leg, (origin, destination, date) in zip(DA_FLIGHT_LEGS, [(city, "MARRAKECH", outbound_date),
+                                                                  ("MARRAKECH", city, return_date)]):
         _fill(ph, leg["route"], f"{origin} - {destination}")
         if date:
             _fill(ph, leg["date"], date)
