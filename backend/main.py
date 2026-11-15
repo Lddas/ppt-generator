@@ -1,3 +1,4 @@
+import datetime
 import io
 import hmac
 import os
@@ -121,6 +122,16 @@ def load_index_json(work_dir: str = ".") -> dict:
         return data
 
 
+def _flight_dates(start_iso, num_days):
+    """Outbound = first day, return = last day, as JJ.MM.AAAA ("" when the start date is unknown)."""
+    try:
+        start = datetime.date.fromisoformat(start_iso or "")
+    except ValueError:
+        return "", ""
+    end = start + datetime.timedelta(days=max(num_days, 1) - 1)
+    return start.strftime("%d.%m.%Y"), end.strftime("%d.%m.%Y")
+
+
 def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
     import gc  # For garbage collection
     
@@ -206,7 +217,8 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         gc.collect()
 
         # Slide for flights (form to complete by hand)
-        gen.add_transport_slide(output_pres)
+        outbound, inbound = _flight_dates(payload.get("start_date"), int(payload.get("num_days") or 1))
+        gen.add_transport_slide(output_pres, outbound, inbound)
 
         # Manual notes slides (before day activities)
         for day_index, day_data in enumerate(payload.get("dayPlans", [])):
@@ -300,6 +312,7 @@ async def generate(
     client: str = Form(...),
     eventTitle: str = Form(""),
     dates: str = Form(...),
+    startDate: str = Form(""),  # AAAA-MM-JJ, used for the flight dates
     numDays: int = Form(...),
     numNights: int = Form(...),
     numPeople: int = Form(...),
@@ -337,6 +350,7 @@ async def generate(
         "client": client,
         "event_title": eventTitle,
         "dates": dates,
+        "start_date": startDate,
         "num_days": str(numDays),
         "num_nights": str(numNights),
         "num_people": str(numPeople),

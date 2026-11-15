@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import { Form } from './data'
 
-export type ChatMessage = { role: 'user' | 'model' | 'error'; text: string }
+export type Choices = { kind: string; label: string; options: string[] }
+export type ChatMessage = { role: 'user' | 'model' | 'error'; text: string; choices?: Choices | null }
 
 const GREETING: ChatMessage = {
   role: 'model',
@@ -41,13 +42,20 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   const [done, setDone] = useState(false)
   const [listening, setListening] = useState(false)
   const [speak, setSpeak] = useState(false)
-  const endRef = useRef<HTMLDivElement>(null)
+  const logRef = useRef<HTMLDivElement>(null)
   const recognition = useRef<any>(null)
   const sendRef = useRef<(text: string) => void>(() => {})
 
   const shown = messages.length ? messages : [GREETING]
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [messages, busy])
+  // The conversation scrolls inside its own frame and always follows the latest message
+  useEffect(() => {
+    const log = logRef.current
+    if (!log) return
+    // a list of choices is tall: keep the question that goes with it in view
+    const last = log.querySelector<HTMLElement>('[data-last-choices]')
+    log.scrollTo({ top: last ? Math.max(last.offsetTop - 16, 0) : log.scrollHeight, behavior: 'smooth' })
+  }, [messages, busy, done])
   useEffect(() => () => { recognition.current?.abort(); window.speechSynthesis?.cancel() }, [])
 
   async function send(raw: string) {
@@ -55,7 +63,7 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
     if (!text || busy) return
     window.speechSynthesis?.cancel()
     setInput('')
-    const history = [...messages, { role: 'user' as const, text }]
+    const history: ChatMessage[] = [...messages, { role: 'user' as const, text }]
     setMessages(history)
     setBusy(true)
     setDone(false)
@@ -75,7 +83,7 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
       }
       const data = await res.json()
       onPatch(data.patch || {})
-      setMessages([...history, { role: 'model', text: data.reply }])
+      setMessages([...history, { role: 'model', text: data.reply, choices: data.choices || null }])
       setDone(!!data.done)
       if (speak && window.speechSynthesis) {
         const utterance = new SpeechSynthesisUtterance(data.reply)
@@ -115,8 +123,8 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   }
 
   return (
-    <div className="mx-auto grid max-w-[1400px] gap-6 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_21rem]">
-      <section className="card flex min-h-[70vh] flex-col rise" aria-label="Assistant">
+    <div className="mx-auto grid max-w-[1400px] items-start gap-6 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_21rem]">
+      <section className="card flex h-[calc(100vh-8.5rem)] min-h-[34rem] flex-col rise" aria-label="Assistant">
         <header className="flex items-start justify-between gap-4 border-b border-[var(--line)] p-6 sm:px-8">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--burgundy)]">Assistant</p>
@@ -128,9 +136,10 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
           </button>
         </header>
 
-        <div className="flex-1 space-y-4 overflow-y-auto p-6 sm:px-8" role="log" aria-live="polite">
+        <div ref={logRef} className="relative min-h-0 flex-1 space-y-4 overflow-y-auto p-6 sm:px-8" role="log" aria-live="polite">
           {shown.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div key={i} data-last-choices={m.choices && i === shown.length - 1 && !busy ? '' : undefined}
+              className={`flex flex-col gap-3 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
               <p className={`max-w-[85%] whitespace-pre-wrap rounded-[18px] px-4 py-3 leading-relaxed ${
                 m.role === 'user'
                   ? 'rounded-br-[6px] bg-[var(--burgundy)] text-white'
@@ -138,6 +147,9 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
                     ? 'rounded-bl-[6px] border border-[#e8c3be] bg-[#fbeceb] text-[var(--danger)]'
                     : 'rounded-bl-[6px] border border-[var(--line)] bg-[var(--cream)]'
               }`}>{m.text}</p>
+              {m.choices && i === shown.length - 1 && !busy && (
+                <ChoicePicker choices={m.choices} onPick={name => send(name)} />
+              )}
             </div>
           ))}
           {busy && (
@@ -152,9 +164,9 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
           {done && !busy && (
             <div className="rounded-[14px] border border-[#bfd8c9] bg-[#edf6f0] p-4 rise">
               <p className="font-semibold text-[var(--ok)]">Tout est rempli.</p>
-              <p className="mt-0.5 text-sm text-[var(--ok)]">Tu peux vérifier le récapitulatif et générer la présentation, ou continuer à ajuster ici.</p>
+              <p className="mt-0.5 text-sm text-[var(--ok)]">Ouvre le récapitulatif pour tout relire, modifier si besoin, puis générer la présentation. Tu peux aussi continuer à ajuster ici.</p>
               <button type="button" className="btn btn-primary mt-3" onClick={onReview}>
-                Vérifier et générer <Icon name="right" className="w-4 h-4" />
+                Voir le récapitulatif <Icon name="right" className="w-4 h-4" />
               </button>
             </div>
           )}
@@ -168,7 +180,6 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
               ))}
             </div>
           )}
-          <div ref={endRef} />
         </div>
 
         <form className="border-t border-[var(--line)] p-4 sm:px-8" onSubmit={e => { e.preventDefault(); send(input) }}>
@@ -206,6 +217,41 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
       </section>
 
       <div>{summary}</div>
+    </div>
+  )
+}
+
+
+/** Clickable list shown under the assistant's question: search, scroll, one click to choose. */
+function ChoicePicker({ choices, onPick }: { choices: Choices; onPick: (name: string) => void }) {
+  const [query, setQuery] = useState('')
+  const normalise = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const shown = choices.options.filter(o => normalise(o).includes(normalise(query)))
+  const icon = choices.kind === 'hotels' ? 'bed' : choices.kind === 'meals' ? 'utensils' : choices.kind === 'breakfasts' ? 'sun' : 'compass'
+  return (
+    <div className="w-full max-w-[34rem] rounded-[16px] border border-[var(--line)] bg-white p-3 shadow-sm rise">
+      <p className="px-1 pb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
+        {choices.label} · {choices.options.length}
+      </p>
+      {choices.options.length > 7 && (
+        <input className="field mb-2 !min-h-[2.6rem]" value={query} placeholder="Rechercher…" aria-label={`Rechercher parmi les ${choices.label}`}
+          onChange={e => setQuery(e.target.value)} />
+      )}
+      <ul className="max-h-64 space-y-1 overflow-y-auto pr-1">
+        {shown.map(option => (
+          <li key={option}>
+            <button type="button" onClick={() => onPick(option)}
+              className="flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left text-[0.95rem] transition-colors hover:bg-[var(--sand)] focus-visible:bg-[var(--sand)]">
+              <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[var(--cream)] text-[var(--burgundy)]">
+                <Icon name={icon} className="w-3.5 h-3.5" />
+              </span>
+              <span className="flex-1">{option}</span>
+              <Icon name="right" className="w-4 h-4 text-[var(--taupe)]" />
+            </button>
+          </li>
+        ))}
+        {shown.length === 0 && <li className="px-3 py-3 text-sm text-[var(--muted)]">Aucun résultat.</li>}
+      </ul>
     </div>
   )
 }

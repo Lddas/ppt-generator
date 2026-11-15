@@ -631,11 +631,50 @@ def add_intro_slides(pasteIntoPres):
             _fill(ph, 10, sentence + ".")
 
 
+def _fit_picture(pic, left, top, width, height, valign="center"):
+    """Show the whole picture inside the box (no crop), centred horizontally."""
+    pic.crop_left = pic.crop_right = pic.crop_top = pic.crop_bottom = 0
+    image_w, image_h = pic.image.size
+    scale = min(width / image_w, height / image_h)
+    pic.width, pic.height = int(image_w * scale), int(image_h * scale)
+    pic.left = int(left + (width - pic.width) / 2)
+    pic.top = int(top + ((height - pic.height) / 2 if valign == "center" else 0))
+
+
+def _repair_end_slide(slide, text):
+    """The old end slides were designed for the old template; once on the new layouts a few need a hand."""
+    pictures = [sh for sh in slide.shapes if sh.shape_type == 13]
+    if text.startswith("APPLICATION MOBILE"):
+        # the long title does not fit its narrow column: smaller, and the body moves under it
+        for sh in slide.shapes:
+            if sh.has_text_frame and sh.text_frame.text.startswith("APPLICATION MOBILE"):
+                sh.top = 380000
+                for paragraph in sh.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.size = Pt(18)
+            elif sh.has_text_frame and sh.text_frame.text.startswith("Création d"):
+                sh.top = 1500000
+    elif text.startswith("LES ONGLETS"):
+        # a full-width screenshot of the tabs, whole, above the title, instead of a crop under it
+        for pic in pictures:
+            _fit_picture(pic, 542924, 330000, 11106150, 4800000)
+    elif "NOTRE DEMARCHE RSE" in text:
+        # the ISO 20121 logo is portrait: show it whole instead of cropping it into a tall thin frame
+        for pic in pictures:
+            if pic.left > 9000000:
+                _fit_picture(pic, 9875520, 1097280, 2072640, 4250000, valign="top")
+
+
 def add_end_slides(pasteIntoPres):
     if os.path.exists(DA_END_FILE):
         end = _load(DA_END_FILE)
         for i in range(len(end.slides)):
-            _copy_slide(end, i, pasteIntoPres)
+            slide, _ = _copy_slide(end, i, pasteIntoPres)
+            text = " ".join(sh.text_frame.text for sh in end.slides[i].shapes if sh.has_text_frame).strip()
+            try:
+                _repair_end_slide(slide, text.upper().replace("É", "E"))
+            except Exception as e:
+                print(f"Could not adjust end slide {i}: {e}")
         return
     pres = _load(NEW_DA_FILE)
     for name in DA_END_LAYOUTS:
@@ -647,9 +686,30 @@ def add_end_slides(pasteIntoPres):
         _copy_slide(pres, len(pres.slides) - 1, pasteIntoPres)
 
 
-def add_transport_slide(pasteIntoPres):
-    """Flight plan: a form to complete by hand, so the prompts of the template are kept."""
-    _copy_slide(_load(NEW_DA_FILE), DA_TRANSPORT_SLIDE, pasteIntoPres, keep_prompts=True)
+# Flight plan placeholders, per leg: route (left box), date (left box), departure and arrival city (timeline),
+# flight time and "DIRECT" (under the timeline)
+DA_FLIGHT_LEGS = [
+    {"route": 20, "date": 19, "departure": 21, "arrival": 22, "duration": 27, "direct": 28},  # outbound
+    {"route": 17, "date": 18, "departure": 23, "arrival": 24, "duration": 25, "direct": 26},  # return
+]
+FLIGHT_DURATION = "3h30"  # Paris - Marrakech, nearly always the same; edited by hand when it is not
+
+
+def add_transport_slide(pasteIntoPres, outbound_date="", return_date=""):
+    """Flight plan Paris - Marrakech, filled with what is known. Dates are "JJ.MM.AAAA" ("" = left blank)."""
+    slide, ph = _copy_slide(_load(NEW_DA_FILE), DA_TRANSPORT_SLIDE, pasteIntoPres)
+    for leg, (origin, destination, date) in zip(DA_FLIGHT_LEGS, [("PARIS", "MARRAKECH", outbound_date),
+                                                                  ("MARRAKECH", "PARIS", return_date)]):
+        _fill(ph, leg["route"], f"{origin} - {destination}")
+        if date:
+            _fill(ph, leg["date"], date)
+        else:
+            _drop(ph, leg["date"])
+        _fill(ph, leg["departure"], origin)
+        _fill(ph, leg["arrival"], destination)
+        _fill(ph, leg["duration"], f"Temps de trajet : {FLIGHT_DURATION}")
+        _fill(ph, leg["direct"], "DIRECT")
+    return slide
 
 
 def add_day_slide(pasteIntoPres, etapes, day_index, day_date):
