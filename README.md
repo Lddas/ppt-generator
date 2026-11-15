@@ -51,7 +51,7 @@ Le serveur n'ouvre que de petits fichiers : mémoire et temps de génération fa
 
 La page d'accueil propose un assistant qui pose des questions et remplit le formulaire (texte ou dictée avec le micro). Il appelle Gemini Flash **depuis le serveur** (`POST /agent`) : la clé ne doit jamais être dans le site, dont le code est public.
 
-- Sur Render, onglet **Environment** : ajouter `APP_PASSWORD` (le mot de passe du site, vérifié par le serveur : sans lui, personne ne peut se connecter) et `GEMINI_API_KEY` (clé créée sur [aistudio.google.com/apikey](https://aistudio.google.com/apikey)). Optionnel : `GEMINI_MODEL` (par défaut `gemini-3.5-flash`). Optionnel aussi : `GEMINI_VOICE` (voix de l’assistant, par défaut `Kore` ; d’autres : `Puck`, `Charon`, `Aoede`, `Leda`).
+- Sur Render, onglet **Environment** : ajouter `APP_PASSWORD` (le mot de passe du site, vérifié par le serveur : sans lui, personne ne peut se connecter) et `GEMINI_API_KEY` (clé créée sur [aistudio.google.com/apikey](https://aistudio.google.com/apikey)). Optionnel : `GEMINI_MODEL` (par défaut `gemini-3.5-flash`). Optionnel aussi : `GEMINI_VOICE` (voix de l’assistant, par défaut `Charon`, voix d’homme grave ; d’autres : `Umbriel`, `Enceladus`, `Algenib`, ou des voix de femme comme `Kore`, `Aoede`).
 - En local, lancer le serveur avec un mot de passe : `APP_PASSWORD=test uvicorn main:app --port 8000`.
 - En local : `GEMINI_API_KEY=... uvicorn main:app --port 8000` dans `backend/`.
 - Les noms proposés par l'assistant sont vérifiés côté serveur contre `index.json` (hôtels, restaurants, activités) : rien d'inventé n'arrive dans le formulaire.

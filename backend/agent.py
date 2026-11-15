@@ -318,7 +318,7 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
 
 
 TTS_MODELS = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview"]
-TTS_VOICE = "Kore"  # override with GEMINI_VOICE
+TTS_VOICE = "Charon"  # override with GEMINI_VOICE
 
 
 def _wav(pcm, rate=24000):

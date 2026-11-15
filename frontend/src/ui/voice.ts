@@ -1,6 +1,6 @@
 /** The assistant's voice (Gemini, served by the backend) and the "talk over it" detector. */
 
-export type Lang = 'fr' | 'en'
+import type { Lang } from './i18n'
 
 const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='
 
@@ -90,6 +90,8 @@ export class VoiceDetector {
   private onVoice: (() => void) | null = null
   private armedAt = 0
   private loud = 0
+  private floor = 0.01
+  level = 0
 
   async open(): Promise<boolean> {
     if (this.stream) return true
@@ -99,17 +101,20 @@ export class VoiceDetector {
       })
       const Ctx = window.AudioContext || (window as any).webkitAudioContext
       this.ctx = new Ctx()
+      await this.ctx.resume() // starts suspended until the page has had a tap
       const analyser = this.ctx.createAnalyser()
       analyser.fftSize = 1024
       this.ctx.createMediaStreamSource(this.stream).connect(analyser)
       const data = new Float32Array(analyser.fftSize)
       this.timer = window.setInterval(() => {
-        if (!this.onVoice) return
         analyser.getFloatTimeDomainData(data)
-        const rms = Math.sqrt(data.reduce((sum, v) => sum + v * v, 0) / data.length)
-        // echo cancelling leaves a faint trace of the assistant's own voice: a real voice is clearly louder
-        this.loud = rms > 0.07 && Date.now() - this.armedAt > 500 ? this.loud + 1 : 0
-        if (this.loud >= 4) { const cb = this.onVoice; this.onVoice = null; cb() } // ~200 ms of sustained voice
+        const rms = Math.sqrt(data.reduce((sum, x) => sum + x * x, 0) / data.length)
+        this.level = rms
+        // what the micro hears when nobody talks (room noise, a faint echo of the assistant): the voice must clearly exceed it
+        const loud = rms > Math.max(0.02, this.floor * 3)
+        if (!loud) this.floor = this.floor * 0.95 + rms * 0.05
+        this.loud = loud && this.onVoice && Date.now() - this.armedAt > 350 ? this.loud + 1 : 0
+        if (this.loud >= 3 && this.onVoice) { const cb = this.onVoice; this.onVoice = null; cb() } // ~150 ms of voice
       }, 50)
       return true
     } catch {

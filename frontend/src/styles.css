@@ -307,3 +307,19 @@ body {
   background: var(--taupe);
   border-radius: 4px;
 }
+
+/* Conversation mode orb */
+.orb {
+  position: relative; width: 64px; height: 64px; flex: none; border-radius: 50%; overflow: hidden;
+  background: radial-gradient(circle at 35% 30%, #d98a96, var(--burgundy) 62%, var(--burgundy-deep));
+  box-shadow: 0 0 calc(14px + var(--amp, 0) * 50px) rgba(122, 31, 52, 0.38);
+  transform: scale(calc(1 + var(--amp, 0) * 0.45)); transition: transform 90ms linear;
+}
+.orb span { position: absolute; inset: -30%; border-radius: 45%; filter: blur(9px); opacity: 0.8; animation: orb-spin 7s linear infinite; }
+.orb span:nth-child(1) { background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.75), transparent 55%); }
+.orb span:nth-child(2) { background: radial-gradient(circle at 70% 60%, #f3c97a, transparent 55%); animation-duration: 10s; animation-direction: reverse; }
+.orb span:nth-child(3) { background: radial-gradient(circle at 50% 85%, #c4476a, transparent 60%); animation-duration: 13s; }
+.orb[data-state='thinking'] span { animation-duration: 2.6s; }
+.orb[data-state='speaking'] span { animation-duration: 4s; }
+@keyframes orb-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .orb span { animation: none; } }
