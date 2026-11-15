@@ -26,7 +26,7 @@ const forAgent = (form: Form) => ({
   hotels: form.hotels, days: form.days.map(d => ({ slots: d.slots, notes: d.notes })),
 })
 
-export default function AgentScreen({ form, onPatch, messages, setMessages, apiUrl, password, onManual, onReview, summary }: {
+export default function AgentScreen({ form, onPatch, messages, setMessages, apiUrl, password, onManual, onReview, onReset, summary }: {
   form: Form
   onPatch: (patch: any) => void
   messages: ChatMessage[]
@@ -35,6 +35,7 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   password: string
   onManual: () => void
   onReview: () => void
+  onReset: () => void
   summary: React.ReactNode
 }) {
   const [input, setInput] = useState('')
@@ -131,9 +132,14 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
             <h1 className="font-display mt-1 text-3xl font-semibold sm:text-4xl">Parle-moi de ton séminaire</h1>
             <p className="mt-1.5 text-[var(--muted)]">Je pose les questions et je remplis le formulaire au fur et à mesure.</p>
           </div>
-          <button type="button" className="btn btn-ghost flex-none" onClick={onManual}>
-            Remplir manuellement
-          </button>
+          <div className="flex flex-none flex-wrap justify-end gap-2">
+            <button type="button" className="btn btn-quiet" onClick={onReset}>
+              <Icon name="refresh" className="w-4 h-4" /> Recommencer
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onManual}>
+              Remplir manuellement
+            </button>
+          </div>
         </header>
 
         <div ref={logRef} className="relative min-h-0 flex-1 space-y-4 overflow-y-auto p-6 sm:px-8" role="log" aria-live="polite">
