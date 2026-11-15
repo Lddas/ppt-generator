@@ -419,48 +419,88 @@ function StepProgram({ form, set, day, setDay }: {
 
 /* ───────────────────────── summary ───────────────────────── */
 
-function Summary({ form, nights, datesText, hasLogo }: { form: Form; nights: number; datesText: string; hasLogo: boolean }) {
+/** Live checklist of the presentation. `known` = the fields already given (null = everything counts, as in the form). */
+function Summary({ form, nights, datesText, hasLogo, known, onLogo }: {
+  form: Form; nights: number; datesText: string; hasLogo: boolean; known: Set<string> | null; onLogo?: () => void
+}) {
+  const has = (key: string) => known === null || known.has(key)
+  const dayFilled = form.days.map(d => d.slots.filter(Boolean).length)
+  const programKnown = has('days') && dayFilled.some(n => n > 0)
+  const items = [
+    { key: 'client', icon: 'user', label: 'Client', done: !!form.client.trim() },
+    { key: 'dates', icon: 'calendar', label: 'Dates', done: has('startDate') && !!datesText },
+    { key: 'people', icon: 'user', label: 'Participants', done: has('numPeople') },
+    { key: 'hotels', icon: 'bed', label: 'Hébergement', done: form.hotels.length > 0 },
+    { key: 'program', icon: 'compass', label: 'Programme', done: programKnown && dayFilled.every(n => n > 0) },
+  ]
+  const doneCount = items.filter(i => i.done).length
+  const Pending = ({ children = 'à renseigner' }: { children?: React.ReactNode }) =>
+    <span className="text-[var(--taupe)]">{children}</span>
+
   return (
     <aside className="card p-5 lg:sticky lg:top-28" aria-label="Récapitulatif">
-      <h2 className="label !mb-4">Votre présentation</h2>
-      <dl className="space-y-4 text-sm">
-        <div>
-          <dt className="text-xs text-[var(--muted)]">Client</dt>
-          <dd className="font-display text-lg font-semibold leading-tight">{form.client || '—'}</dd>
-          {form.eventTitle && <dd className="text-[var(--muted)]">{form.eventTitle}</dd>}
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          {[[form.numDays, 'jours'], [nights, 'nuits'], [form.numPeople, 'pers.']].map(([n, l]) => (
+      <div className="mb-4 flex items-baseline justify-between">
+        <h2 className="label !mb-0">Votre présentation</h2>
+        <span className="text-xs font-semibold text-[var(--burgundy)]">{doneCount} / {items.length}</span>
+      </div>
+      <div className="mb-5 h-1.5 overflow-hidden rounded-full bg-[var(--sand)]" role="progressbar"
+        aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={doneCount} aria-label="Avancement">
+        <div className="h-full rounded-full bg-[var(--burgundy)] transition-all duration-500" style={{ width: `${(doneCount / items.length) * 100}%` }} />
+      </div>
+
+      <ul className="space-y-4 text-sm">
+        <li>
+          <p className="text-xs text-[var(--muted)]">Client</p>
+          <p className="font-display text-lg font-semibold leading-tight">{form.client || <Pending>à renseigner</Pending>}</p>
+          {form.eventTitle && <p className="text-[var(--muted)]">{form.eventTitle}</p>}
+        </li>
+        <li>
+          <p className="text-xs text-[var(--muted)]">Dates</p>
+          <p>{has('startDate') && datesText ? datesText : <Pending />}</p>
+        </li>
+        <li className="grid grid-cols-3 gap-2 text-center">
+          {[[has('numDays') ? form.numDays : '—', 'jours'], [has('numDays') || has('numNights') ? nights : '—', nights > 1 ? 'nuits' : 'nuit'],
+            [has('numPeople') ? form.numPeople : '—', 'pers.']].map(([n, l]) => (
             <div key={l as string} className="inner py-2">
-              <div className="font-display text-lg font-semibold">{n}</div>
+              <div className={`font-display text-lg font-semibold ${n === '—' ? 'text-[var(--taupe)]' : ''}`}>{n}</div>
               <div className="text-[11px] text-[var(--muted)]">{l}</div>
             </div>
           ))}
-        </div>
-        {datesText && <p className="text-[var(--muted)]">{datesText}</p>}
-        <div>
-          <dt className="text-xs text-[var(--muted)] mb-1">Hôtels</dt>
-          {form.hotels.length === 0 && <dd className="text-[var(--muted)]">—</dd>}
+        </li>
+        <li>
+          <p className="mb-1 text-xs text-[var(--muted)]">Hôtels</p>
+          {form.hotels.length === 0 && <Pending />}
           {form.hotels.map((h, i) => (
-            <dd key={i} className="flex justify-between gap-2 py-0.5">
-              <span className="truncate">{h.hotelName}</span><span className="text-[var(--muted)] flex-none">{h.rooms} ch.</span>
-            </dd>
+            <p key={i} className="flex justify-between gap-2 py-0.5">
+              <span className="truncate">{h.hotelName}</span><span className="flex-none text-[var(--muted)]">{h.rooms} ch.</span>
+            </p>
           ))}
-        </div>
-        <div>
-          <dt className="text-xs text-[var(--muted)] mb-1">Programme</dt>
-          {form.days.map((d, i) => {
-            const n = d.slots.filter(Boolean).length
+        </li>
+        <li>
+          <p className="mb-1 text-xs text-[var(--muted)]">Programme</p>
+          {!programKnown ? <Pending /> : form.days.map((d, i) => {
+            const n = dayFilled[i]
             return (
-              <dd key={i} className="flex items-center justify-between py-0.5">
+              <p key={i} className="flex items-center justify-between py-0.5">
                 <span>Jour {i + 1}</span>
-                <span className={n ? 'text-[var(--ok)] font-medium' : 'text-[var(--muted)]'}>{n ? `${n} étape${n > 1 ? 's' : ''}` : 'vide'}</span>
-              </dd>
+                <span className={n === 5 ? 'font-medium text-[var(--ok)]' : n ? 'font-medium text-[var(--ok)]' : 'text-[var(--taupe)]'}>
+                  {n ? `${n} / 5` : 'à remplir'}
+                </span>
+              </p>
             )
           })}
-        </div>
-        <p className="text-xs text-[var(--muted)]">Logo : {hasLogo ? 'ajouté' : 'aucun'}</p>
-      </dl>
+        </li>
+        <li className="flex items-center justify-between border-t border-[var(--line)] pt-3">
+          <span className="text-xs text-[var(--muted)]">Logo du client</span>
+          {hasLogo ? (
+            <span className="flex items-center gap-1 font-medium text-[var(--ok)]"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> ajouté</span>
+          ) : onLogo ? (
+            <button type="button" className="btn btn-quiet !min-h-0 !py-1" onClick={onLogo}>
+              <Icon name="upload" className="w-4 h-4" /> Ajouter
+            </button>
+          ) : <Pending>facultatif</Pending>}
+        </li>
+      </ul>
     </aside>
   )
 }
@@ -473,6 +513,9 @@ export default function App() {
   // A fresh visit starts with the assistant; a saved draft resumes in the form
   const [mode, setMode] = useState<'agent' | 'form' | 'recap'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
   const [chat, setChat] = useState<ChatMessage[]>([])
+  // what the assistant has actually been told so far (the summary shows the rest as « à renseigner »)
+  const [known, setKnown] = useState<Set<string>>(new Set())
+  const logoInput = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState(0)
   const [maxReached, setMaxReached] = useState(0)
   const [day, setDay] = useState(0)
@@ -554,7 +597,7 @@ export default function App() {
   function reset() {
     if (result) URL.revokeObjectURL(result.url)
     setResult(null); setError(null); setForm(initialForm()); clearLogo(); setStep(0); setMaxReached(0); setDay(0)
-    setChat([]); setMode('agent')
+    setChat([]); setKnown(new Set()); setMode('agent')
   }
 
   async function generate() {
@@ -604,10 +647,15 @@ export default function App() {
 
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />
 
-  const summary = <Summary form={form} nights={nights} datesText={datesText} hasLogo={!!logoFile} />
+  const summary = (
+    <Summary form={form} nights={nights} datesText={datesText} hasLogo={!!logoFile}
+      known={mode === 'agent' ? known : null} onLogo={() => logoInput.current?.click()} />
+  )
 
   return (
     <div className="min-h-screen">
+      <input ref={logoInput} type="file" accept="image/*" className="sr-only" tabIndex={-1} aria-label="Logo du client"
+        onChange={e => { onLogo(e.target.files?.[0] || null); e.target.value = '' }} />
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--cream)]">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-5 py-3">
           <div className="flex items-center gap-3">
@@ -642,7 +690,10 @@ export default function App() {
           form={form}
           messages={chat}
           setMessages={setChat}
-          onPatch={patch => setForm(f => applyPatch(f, patch))}
+          onPatch={patch => { setForm(f => applyPatch(f, patch)); setKnown(k => new Set([...k, ...Object.keys(patch).filter(key => patch[key] != null && !(Array.isArray(patch[key]) && patch[key].length === 0))])) }}
+          logoFile={logoFile}
+          onLogo={onLogo}
+          onLogoClear={clearLogo}
           apiUrl={API_URL}
           password={getPassword()}
           onManual={() => setMode('form')}

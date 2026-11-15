@@ -2,12 +2,12 @@ import React, { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import { Form } from './data'
 
-export type Choices = { kind: string; label: string; options: string[] }
+export type Choices = { kind: string; label: string; options: string[]; open?: boolean }
 export type ChatMessage = { role: 'user' | 'model' | 'error'; text: string; choices?: Choices | null }
 
 const GREETING: ChatMessage = {
   role: 'model',
-  text: 'Salut ! Je suis l’assistant Preference Events. Raconte-moi ton séminaire et je remplis tout à ta place. On commence : quel est le nom du client ?',
+  text: 'Salut ! Je suis l’assistant Preference Events. Raconte-moi ton séminaire et je remplis tout à ta place. Quand tu hésites (hôtel, restaurant, activité…), demande-moi les options et je te les montre. On commence : quel est le nom du client ?',
 }
 
 const EXAMPLES = [
@@ -20,13 +20,14 @@ const SpeechRecognitionApi: any =
   typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : undefined
 
 /** What the assistant needs to know of the form: no files, no UI state. */
-const forAgent = (form: Form) => ({
+const forAgent = (form: Form, hasLogo: boolean) => ({
+  hasLogo,
   client: form.client, eventTitle: form.eventTitle, startDate: form.startDate,
   numDays: form.numDays, numNights: form.numNights, numPeople: form.numPeople,
   hotels: form.hotels, days: form.days.map(d => ({ slots: d.slots, notes: d.notes })),
 })
 
-export default function AgentScreen({ form, onPatch, messages, setMessages, apiUrl, password, onManual, onReview, onReset, summary }: {
+export default function AgentScreen({ form, onPatch, messages, setMessages, apiUrl, password, onManual, onReview, onReset, logoFile, onLogo, onLogoClear, summary }: {
   form: Form
   onPatch: (patch: any) => void
   messages: ChatMessage[]
@@ -36,6 +37,9 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   onManual: () => void
   onReview: () => void
   onReset: () => void
+  logoFile: File | null
+  onLogo: (file: File | null) => void
+  onLogoClear: () => void
   summary: React.ReactNode
 }) {
   const [input, setInput] = useState('')
@@ -43,6 +47,11 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   const [done, setDone] = useState(false)
   const [listening, setListening] = useState(false)
   const [speak, setSpeak] = useState(false)
+  const [conversation, setConversation] = useState(false) // hands-free: it talks, then listens again
+  const [speaking, setSpeaking] = useState(false)
+  const [opened, setOpened] = useState<Set<number>>(new Set()) // « Voir les options » buttons already clicked
+  const conversationRef = useRef(false)
+  const busyRef = useRef(false)
   const logRef = useRef<HTMLDivElement>(null)
   const recognition = useRef<any>(null)
   const sendRef = useRef<(text: string) => void>(() => {})
@@ -56,8 +65,8 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
     // a list of choices is tall: keep the question that goes with it in view
     const last = log.querySelector<HTMLElement>('[data-last-choices]')
     log.scrollTo({ top: last ? Math.max(last.offsetTop - 16, 0) : log.scrollHeight, behavior: 'smooth' })
-  }, [messages, busy, done])
-  useEffect(() => () => { recognition.current?.abort(); window.speechSynthesis?.cancel() }, [])
+  }, [messages, busy, done, opened])
+  useEffect(() => () => { conversationRef.current = false; recognition.current?.abort(); window.speechSynthesis?.cancel() }, [])
 
   async function send(raw: string) {
     const text = raw.trim()
@@ -67,14 +76,16 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
     const history: ChatMessage[] = [...messages, { role: 'user' as const, text }]
     setMessages(history)
     setBusy(true)
+    busyRef.current = true
     setDone(false)
+    let failed = false
     try {
       const res = await fetch(`${apiUrl}/agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-App-Password': password },
         body: JSON.stringify({
           messages: history.filter(m => m.role !== 'error').map(m => ({ role: m.role, text: m.text })),
-          form: forAgent(form),
+          form: forAgent(form, !!logoFile),
         }),
       })
       if (!res.ok) {
@@ -86,41 +97,91 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
       onPatch(data.patch || {})
       setMessages([...history, { role: 'model', text: data.reply, choices: data.choices || null }])
       setDone(!!data.done)
-      if (speak && window.speechSynthesis) {
+      if ((speak || conversationRef.current) && window.speechSynthesis) {
         const utterance = new SpeechSynthesisUtterance(data.reply)
         utterance.lang = 'fr-FR'
+        utterance.voice = window.speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith('fr')) || null
+        setSpeaking(true)
+        utterance.onend = utterance.onerror = () => { setSpeaking(false); if (conversationRef.current) startListening() }
         window.speechSynthesis.speak(utterance)
+      } else if (conversationRef.current) {
+        startListening()
       }
     } catch (e: any) {
+      failed = true
       const offline = e?.message === 'Failed to fetch'
       setMessages([...history, {
         role: 'error',
         text: offline ? 'Le serveur ne répond pas. Réessaie dans un instant, ou remplis le formulaire à la main.' : e.message,
       }])
     } finally {
+      busyRef.current = false
       setBusy(false)
+      if (failed && conversationRef.current) setTimeout(startListening, 300) // let the person try again
     }
   }
   sendRef.current = send
 
-  function toggleMic() {
-    if (listening) { recognition.current?.stop(); return }
+  function startListening() {
+    if (!SpeechRecognitionApi || busyRef.current) return
     window.speechSynthesis?.cancel()
+    recognition.current?.abort()
     const r = new SpeechRecognitionApi()
     r.lang = 'fr-FR'
     r.interimResults = true
     r.continuous = false
+    let heard = false
     r.onresult = (event: any) => {
       let text = ''
       for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript
       setInput(text)
-      if (event.results[event.results.length - 1].isFinal) sendRef.current(text)
+      if (event.results[event.results.length - 1].isFinal) { heard = true; sendRef.current(text) }
     }
-    r.onerror = () => setListening(false)
-    r.onend = () => setListening(false)
+    r.onerror = (event: any) => {
+      if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
+        conversationRef.current = false
+        setConversation(false)
+        setMessages(m => [...m, { role: 'error', text: 'Le micro est bloqué. Autorise-le pour ce site dans les réglages du navigateur.' }])
+      }
+    }
+    r.onend = () => {
+      setListening(false)
+      // in conversation mode a silence just restarts the listening
+      if (conversationRef.current && !heard && !busyRef.current) setTimeout(() => { if (conversationRef.current && !busyRef.current) startListening() }, 400)
+    }
     recognition.current = r
     setListening(true)
-    r.start()
+    try { r.start() } catch { setListening(false) }
+  }
+
+  function toggleMic() {
+    if (listening) { recognition.current?.stop(); return }
+    startListening()
+  }
+
+  function toggleConversation() {
+    const next = !conversationRef.current
+    conversationRef.current = next
+    setConversation(next)
+    if (next) {
+      setSpeak(true)
+      // the last question is read out loud, then the micro opens
+      const last = [...messages].reverse().find(m => m.role === 'model') || GREETING
+      if (window.speechSynthesis && !busyRef.current) {
+        const utterance = new SpeechSynthesisUtterance(last.text)
+        utterance.lang = 'fr-FR'
+        utterance.voice = window.speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith('fr')) || null
+        setSpeaking(true)
+        utterance.onend = utterance.onerror = () => { setSpeaking(false); if (conversationRef.current) startListening() }
+        window.speechSynthesis.cancel()
+        window.speechSynthesis.speak(utterance)
+      } else startListening()
+    } else {
+      recognition.current?.abort()
+      window.speechSynthesis?.cancel()
+      setSpeaking(false)
+      setListening(false)
+    }
   }
 
   return (
@@ -144,7 +205,7 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
 
         <div ref={logRef} className="relative min-h-0 flex-1 space-y-4 overflow-y-auto p-6 sm:px-8" role="log" aria-live="polite">
           {shown.map((m, i) => (
-            <div key={i} data-last-choices={m.choices && i === shown.length - 1 && !busy ? '' : undefined}
+            <div key={i} data-last-choices={m.choices && i === shown.length - 1 && !busy && (m.choices.open || opened.has(i) || m.choices.kind === 'logo') ? '' : undefined}
               className={`flex flex-col gap-3 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
               <p className={`max-w-[85%] whitespace-pre-wrap rounded-[18px] px-4 py-3 leading-relaxed ${
                 m.role === 'user'
@@ -154,7 +215,15 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
                     : 'rounded-bl-[6px] border border-[var(--line)] bg-[var(--cream)]'
               }`}>{m.text}</p>
               {m.choices && i === shown.length - 1 && !busy && (
-                <ChoicePicker choices={m.choices} onPick={name => send(name)} />
+                m.choices.kind === 'logo' ? (
+                  <LogoPicker logoFile={logoFile} onLogo={onLogo} onClear={onLogoClear} onSkip={() => send('Pas de logo pour le moment')} onDone={() => send('Le logo est ajouté')} />
+                ) : m.choices.open || opened.has(i) ? (
+                  <ChoicePicker choices={m.choices} onPick={name => send(name)} />
+                ) : (
+                  <button type="button" className="btn btn-ghost !min-h-[2.6rem] bg-white" onClick={() => setOpened(o => new Set(o).add(i))}>
+                    <Icon name="chat" className="w-4 h-4" /> Voir les {m.choices.label}
+                  </button>
+                )
               )}
             </div>
           ))}
@@ -194,11 +263,19 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
               className="field min-h-[3.25rem] flex-1 resize-none"
               rows={1}
               value={input}
-              placeholder={listening ? 'Je t’écoute…' : 'Écris ou dicte ta réponse…'}
+              placeholder={conversation ? (busy ? 'Je réfléchis…' : speaking ? 'Je parle…' : 'Je t’écoute, parle…') : listening ? 'Je t’écoute…' : 'Écris ou dicte ta réponse…'}
               aria-label="Ton message"
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
             />
+            {SpeechRecognitionApi && (
+              <button type="button" onClick={toggleConversation} aria-pressed={conversation}
+                aria-label={conversation ? 'Arrêter la conversation vocale' : 'Démarrer la conversation vocale'}
+                title="Conversation vocale mains libres"
+                className={`btn !px-4 !min-h-[3.25rem] ${conversation ? 'btn-primary' : 'btn-ghost'}`}>
+                <Icon name="wave" className="w-5 h-5" /> <span className="hidden sm:inline">{conversation ? 'Arrêter' : 'Conversation'}</span>
+              </button>
+            )}
             {SpeechRecognitionApi && (
               <button type="button" onClick={toggleMic} aria-pressed={listening}
                 aria-label={listening ? 'Arrêter la dictée' : 'Dicter'}
@@ -258,6 +335,40 @@ function ChoicePicker({ choices, onPick }: { choices: Choices; onPick: (name: st
         ))}
         {shown.length === 0 && <li className="px-3 py-3 text-sm text-[var(--muted)]">Aucun résultat.</li>}
       </ul>
+    </div>
+  )
+}
+
+
+/** Drop zone for the client's logo, shown inside the conversation. */
+function LogoPicker({ logoFile, onLogo, onClear, onSkip, onDone }: {
+  logoFile: File | null; onLogo: (file: File | null) => void; onClear: () => void; onSkip: () => void; onDone: () => void
+}) {
+  const [dragging, setDragging] = useState(false)
+  return (
+    <div className="w-full max-w-[34rem] rounded-[16px] border border-[var(--line)] bg-white p-4 shadow-sm rise">
+      {logoFile ? (
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[#edf6f0] text-[var(--ok)]"><Icon name="check" className="w-5 h-5" strokeWidth={2.5} /></span>
+          <div className="min-w-0 flex-1"><p className="truncate font-medium">{logoFile.name}</p><p className="text-xs text-[var(--muted)]">Logo ajouté</p></div>
+          <button type="button" className="icon-btn" onClick={onClear} aria-label="Retirer le logo"><Icon name="x" className="w-4 h-4" /></button>
+          <button type="button" className="btn btn-primary !min-h-[2.6rem]" onClick={onDone}>Continuer</button>
+        </div>
+      ) : (
+        <>
+          <label
+            onDragOver={e => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => { e.preventDefault(); setDragging(false); onLogo(e.dataTransfer.files?.[0] || null) }}
+            className={`flex cursor-pointer flex-col items-center gap-1 rounded-[12px] border-2 border-dashed px-4 py-6 text-center transition-colors ${dragging ? 'border-[var(--burgundy)] bg-[var(--sand)]' : 'border-[var(--taupe)] hover:bg-[var(--sand)]'}`}>
+            <Icon name="upload" className="w-6 h-6 text-[var(--muted)]" />
+            <span>Glisse le logo ici ou <span className="font-semibold text-[var(--burgundy)]">parcours</span></span>
+            <span className="text-xs text-[var(--muted)]">PNG, JPEG… il apparaîtra sur la page de garde</span>
+            <input type="file" accept="image/*" className="sr-only" onChange={e => onLogo(e.target.files?.[0] || null)} />
+          </label>
+          <button type="button" className="btn btn-quiet mt-2 !text-[var(--muted)]" onClick={onSkip}>Passer, pas de logo</button>
+        </>
+      )}
     </div>
   )
 }
