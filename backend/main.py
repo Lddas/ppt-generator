@@ -158,7 +158,7 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         gc.collect()
 
         # First slides: cover, project, Marrakech, practical info
-        gen.add_intro_slides(output_pres)
+        gen.add_intro_slides(output_pres, payload.get("start_date") or "")
         
         # Force garbage collection after first slides
         gc.collect()
