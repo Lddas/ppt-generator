@@ -41,11 +41,21 @@ r = turn({"reply": "ok", "done": False, "form": {"startDate": "2026-13-45", "num
 assert r["patch"] == {}
 
 # done only counts when nothing essential is missing
+ASKED = [{"role": "user", "text": "x"}, {"role": "model", "text": "Un autre hôtel ? Un petit-déjeuner le jour de l'arrivée ? Le logo ?"}, {"role": "user", "text": "non merci"}]
+
+
+BEFORE_LOGO = [{"role": "user", "text": "x"}, {"role": "model", "text": "Un autre hôtel ? Un petit-déjeuner le jour de l'arrivée ?"}, {"role": "user", "text": "non merci"}]
+
+
+def asked_turn(answer, form, history=ASKED):
+    return agent.respond(history, form, NAMES, today="2026-11-14", api_key="k", model="m", caller=fake(answer))
+
+
 form = {"client": "A", "hasLogo": True, "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
         "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
-assert turn({"reply": "Prêt ?", "done": True}, form)["done"] is True
+assert asked_turn({"reply": "Prêt ?", "done": True}, form)["done"] is True
 form["days"] = [{"slots": ["", "", "", "", ""], "notes": []}]
-assert turn({"reply": "Prêt ?", "done": True}, form)["done"] is False
+assert asked_turn({"reply": "Prêt ?", "done": True}, form)["done"] is False
 
 # nothing is assumed: duration, people and rooms must be given before "done"
 bare = {"client": "A", "startDate": "2026-11-21", "numDays": None, "numPeople": None, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 0}],
@@ -60,12 +70,76 @@ assert r["choices"] and r["choices"]["kind"] == "logo" and r["choices"]["open"] 
 assert turn({"reply": "Le logo ? Sinon c'est prêt.", "done": True}, {"client": "A"})["done"] is False
 done_form = {"client": "A", "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
              "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
-r = turn({"reply": "Prêt !", "done": True}, done_form)
+r = asked_turn({"reply": "Prêt !", "done": True}, done_form, BEFORE_LOGO)
 assert r["done"] is False and r["choices"]["kind"] == "logo" and "logo" in r["reply"]
-assert turn({"reply": "Prêt !", "done": True}, {**done_form, "hasLogo": True})["choices"] is None  # logo already added
-r = agent.respond([{"role": "user", "text": "x"}, {"role": "model", "text": "Tu as le logo ?"}, {"role": "user", "text": "Pas de logo pour le moment"}],
+assert asked_turn({"reply": "Prêt !", "done": True}, {**done_form, "hasLogo": True})["choices"] is None  # logo already added
+r = agent.respond([{"role": "user", "text": "x"}, {"role": "model", "text": "Un autre hôtel ? Un petit-déjeuner le jour de l'arrivée ? Tu as le logo ?"}, {"role": "user", "text": "Pas de logo pour le moment"}],
                   done_form, NAMES, api_key="k", model="m", caller=fake({"reply": "Ok, sans logo. Prêt ?", "done": True}))
 assert r["done"] is True and r["choices"] is None  # skipping it ends the question
+
+# --- programme rules ---
+import random
+# a morning is not an afternoon
+assert agent.fits_slot("morning", "QUAD") and not agent.fits_slot("morning", "APRES MIDI LIBRE") and not agent.fits_slot("afternoon", "MATINEE LIBRE")
+r = turn({"reply": "ok", "done": False, "form": {"days": [{"day": 1, "morning": "APRES MIDI LIBRE", "afternoon": "MATINEE DE REUNION", "lunch": "DAR CHERIFA"}]}})
+assert r["patch"]["days"][0]["slots"] == {"lunch": "DAR CHERIFA"} and "APRES" not in r["reply"] and "MATINEE" not in r["reply"]  # dropped quietly
+assert "APRES MIDI LIBRE" not in agent.respond([{"role": "user", "text": "x"}], {}, NAMES, api_key="k", model="m",
+    caller=fake({"reply": "Voici", "done": False, "showChoices": "activities_morning"}))["choices"]["options"]
+assert "MATINEE LIBRE" not in turn({"reply": "Voici", "done": False, "showChoices": "activities_afternoon"})["choices"]["options"]
+
+# nothing after the departure
+r = turn({"reply": "ok", "done": False, "form": {"days": [{"day": 2, "morning": "QUAD", "afternoon": "DEPART", "dinner": "DINER A L'HOTEL"}]}},
+         {"numDays": 2, "days": [{"slots": ["", "", "", "", ""], "notes": []}, {"slots": ["", "", "", "", ""], "notes": []}]})
+day2 = agent.merge({"numDays": 2, "days": [{"slots": ["", "", "", "", ""], "notes": []}, {"slots": ["", "", "", "", ""], "notes": []}]}, r["patch"])["days"][1]["slots"]
+assert day2[3] == "DEPART" and day2[4] == "", day2
+
+# the first morning has no breakfast unless it was asked for
+r = turn({"reply": "ok", "done": False, "form": {"days": [{"day": 1, "breakfast": "PETIT DEJEUNER BERBERE", "lunch": "DAR CHERIFA"}]}})
+assert r["patch"]["days"][0]["slots"] == {"lunch": "DAR CHERIFA"}
+r = agent.respond([{"role": "user", "text": "avec un petit déjeuner le premier jour"}], {}, NAMES, api_key="k", model="m",
+                  caller=fake({"reply": "ok", "done": False, "form": {"days": [{"day": 1, "breakfast": "PETIT DEJEUNER BERBERE"}]}}))
+assert r["patch"]["days"][0]["slots"] == {"breakfast": "PETIT DEJEUNER BERBERE"}
+
+# « fill everything quickly »: a varied programme, arrival then departure, no hotel dinners
+assert agent.wants_program("remplis tout le programme pour moi") and agent.wants_program("au hasard") and not agent.wants_program("Dior")
+form3 = {"numDays": 3, "days": [{"slots": ["", "", "", "", ""], "notes": []} for _ in range(3)]}
+for seed in range(20):
+    entries = agent.fun_program(NAMES, form3, rng=random.Random(seed))
+    days = agent.merge(form3, {"days": entries})["days"]
+    assert days[0]["slots"][0] == "" and days[0]["slots"][1] == "ARRIVEE", days[0]
+    assert agent.is_departure(days[2]["slots"][3]) and days[2]["slots"][4] == "", days[2]
+    cells = [c for d in days for c in d["slots"] if c and c not in ("ARRIVEE",) and not agent.is_departure(c)]
+    assert not any("A L'HOTEL" in d["slots"][k].upper() for d in days for k in (2, 4)) and len(cells) == len(set(cells)), cells  # no hotel lunch or dinner
+    assert all(agent.fits_slot("morning", d["slots"][1]) and agent.fits_slot("afternoon", d["slots"][3]) for d in days)
+# at random / for a test: everything is redone, a plain « fill » keeps what is already there
+busy = {"numDays": 2, "days": [{"slots": ["", "", "DEJEUNER A L'HOTEL", "APRES MIDI LIBRE", "DINER A L'HOTEL"], "notes": []}, {"slots": ["", "", "", "", ""], "notes": []}]}
+kept = agent.merge(busy, {"days": agent.fun_program(NAMES, busy, rng=random.Random(1))})["days"][0]["slots"]
+assert kept[2:] == ["DEJEUNER A L'HOTEL", "APRES MIDI LIBRE", "DINER A L'HOTEL"]
+redone = agent.merge(busy, {"days": agent.fun_program(NAMES, busy, rng=random.Random(1), overwrite=True)})["days"][0]["slots"]
+assert redone[2] != "DEJEUNER A L'HOTEL" and "A L'HOTEL" not in redone[4] and redone[0] == "" and redone[1] == "ARRIVEE", redone
+r = agent.respond([{"role": "user", "text": "remplis tout le programme pour moi"}], {"numDays": 3, "days": form3["days"]}, NAMES, api_key="k", model="m",
+                  caller=fake({"reply": "ok", "done": False, "form": {"days": [{"day": 1, "dinner": "DINER A L'HOTEL"}]}}))
+assert len(r["patch"]["days"]) == 3 and "DINER A L'HOTEL" not in str(r["patch"])  # the server's programme replaces the lazy one
+# even when the model already wrote the arrival itself, the server's programme keeps it
+r = agent.respond([{"role": "user", "text": "remplis tout au hasard"}], {"numDays": 3, "days": form3["days"]}, NAMES, api_key="k", model="m",
+                  caller=fake({"reply": "ok", "done": False, "form": {"days": [{"day": 1, "morning": "ARRIVEE"}, {"day": 3, "afternoon": "DEPART"}]}}))
+merged_days = agent.merge({"numDays": 3, "days": form3["days"]}, r["patch"])["days"]
+assert merged_days[0]["slots"][1] == "ARRIVEE" and agent.is_departure(merged_days[2]["slots"][3]) and all(c for c in merged_days[1]["slots"][1:]), merged_days
+
+# several hotels: after one hotel the assistant asks about others, once; at most three are kept
+r = turn({"reply": "Noté.", "done": False, "form": {"hotels": [{"hotelName": "MAMOUNIA", "rooms": 12}]}})
+assert "autre hôtel" in r["reply"] and r["choices"]["kind"] == "hotels" and r["choices"]["open"] is False
+r = agent.respond([{"role": "user", "text": "x"}, {"role": "model", "text": "Tu veux un autre hôtel ?"}, {"role": "user", "text": "non"}], {"hotels": [{"hotelName": "MAMOUNIA", "rooms": 12}]},
+                  NAMES, api_key="k", model="m", caller=fake({"reply": "Parfait.", "done": False}))
+assert "autre hôtel" not in r["reply"]
+r = turn({"reply": "ok", "done": False, "form": {"hotels": [{"hotelName": h, "rooms": 5} for h in ("MAMOUNIA", "PARK HYATT", "MOVENPICK", "DAR SABRA")]}})
+assert len(r["patch"]["hotels"]) == 3
+
+# the breakfast question of the arrival day comes once the programme is filled
+full = {"client": "A", "startDate": "2026-12-12", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}, {"hotelName": "PARK HYATT", "rooms": 3}],
+        "days": [{"slots": ["", "QUAD", "DAR CHERIFA", "SPA", "KABANA"], "notes": []}]}
+r = turn({"reply": "Programme prêt.", "done": True}, full)
+assert "petit-déjeuner" in r["reply"] and r["choices"]["kind"] == "breakfasts" and r["done"] is False
 
 # clearing a cell, and merging into a day
 merged = agent.merge(form, {"days": [{"day": 1, "slots": {"lunch": "DAR CHERIFA"}}]})

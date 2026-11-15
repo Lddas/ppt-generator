@@ -165,12 +165,12 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         # Force garbage collection after first slides
         gc.collect()
 
-        # Multiple hotels slide
+        # Several hotels: the « PROPOSITIONS D’HEBERGEMENT » slide that lists them
         if len(payload.get("hotels", [])) > 1:
             try:
-                gen.NewSlide(1, "liste_HOTELS.pptx", output_pres)
-            except Exception:
-                pass
+                gen.add_hotel_proposals(output_pres, payload["hotels"])
+            except Exception as e:
+                print(f"Hotel proposals slide skipped: {e}")
 
         # Hotel slides
         for h in payload.get("hotels", []):
@@ -211,6 +211,14 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         # A day is either 5 fixed cells (breakfast, morning, lunch, afternoon, dinner; "" = empty)
         # or, for older clients, a plain list of steps
         activities_by_day = [dp.get("slots") or dp.get("steps", []) for dp in payload.get("dayPlans", [])]
+        # nothing after a departure: the rest of that day stays empty
+        for slots in activities_by_day:
+            departed = False
+            for k, name in enumerate(slots):
+                if departed:
+                    slots[k] = ""
+                elif str(name or "").upper().startswith("DEPART"):
+                    departed = True
         day_dates = [dp.get("date", "") for dp in payload.get("dayPlans", [])]
         print(f"DEBUG: Activities by day: {activities_by_day}")
         gen.make_agenda(output_pres, activities_by_day, day_dates)

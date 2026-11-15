@@ -23,7 +23,7 @@ const TEXTS = {
     conversation: 'Conversation', stop: 'Stop', see: 'See the',
     allDone: 'Everything is filled in.', doneHelp: 'Open the summary to review everything, edit if needed, then generate the presentation. You can also keep adjusting here.',
     recap: 'See the summary', voiceDown: 'The assistant’s voice is unavailable right now (Gemini quota reached). Replies stay in writing, you can keep talking.', micBlocked: 'The microphone is blocked. Allow it for this site in your browser settings.',
-    labels: { hotels: 'hotels', breakfasts: 'breakfasts', meals: 'restaurants & evenings', activities: 'activities' } as Record<string, string>,
+    labels: { hotels: 'hotels', breakfasts: 'breakfasts', meals: 'restaurants & evenings', activities: 'activities', activities_morning: 'morning activities', activities_afternoon: 'afternoon activities' } as Record<string, string>,
   },
 }
 
