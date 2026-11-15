@@ -12,10 +12,11 @@ import io
 import json
 import os
 import re
-import struct
 import urllib.error
 import urllib.parse
 import urllib.request
+
+import usage
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_MODEL = "gemini-3.5-flash-lite"  # ~1.5 s a turn; override with GEMINI_MODEL
@@ -251,18 +252,18 @@ def _race(models, call, hedge_after, fatal=lambda error: False):
     """Runs call(model) on the models in order, but never waits: the next model starts at once when one fails
     and also when one is just slow (> hedge_after s). The first success wins; otherwise the last error is raised."""
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(models))
-    pending, started, last, slow = set(), 0, None, False
+    pending, started, last, start_next = set(), 0, None, True
     try:
         while True:
-            if started < len(models) and (not pending or slow or last is not None):
+            if start_next and started < len(models):
                 pending.add(pool.submit(call, models[started]))
                 started += 1
-            slow = False
+            start_next = False
             if not pending:
                 raise last
             done, pending = concurrent.futures.wait(pending, timeout=hedge_after, return_when=concurrent.futures.FIRST_COMPLETED)
             if not done:
-                slow = True  # nothing yet: start the next model without cancelling this one
+                start_next = True  # nothing yet: start the next model without cancelling this one
                 continue
             for future in done:
                 try:
@@ -270,7 +271,7 @@ def _race(models, call, hedge_after, fatal=lambda error: False):
                 except Exception as error:  # noqa: BLE001 - classified by the caller
                     if fatal(error):
                         raise
-                    last = error
+                    last, start_next = error, True
             if started >= len(models) and not pending:
                 raise last
     finally:
@@ -282,7 +283,7 @@ def call_gemini(body, api_key, model, hedge_after=4.0):
     models = [model] + [m for m in FALLBACK_MODELS if m != model]
     retriable = (404, 429, 500, 503)
     try:
-        return _race(models, lambda m: _call_once(body, api_key, m), hedge_after,
+        return _race(models, lambda m: {**_call_once(body, api_key, m), "_model": m}, hedge_after,
                      fatal=lambda e: isinstance(e, urllib.error.HTTPError) and e.code not in retriable)
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", "replace")[:300]
@@ -318,10 +319,10 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
                              "responseSchema": SCHEMA, "maxOutputTokens": 1500,
                              "thinkingConfig": {"thinkingLevel": "low"}},
     }
-    data = caller(body, api_key, model or os.environ.get("GEMINI_MODEL", DEFAULT_MODEL))
-    usage = data.get("usageMetadata") or {}
+    data = caller(body, api_key, model or usage.get_config().get("model") or os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL)
+    meta = data.get("usageMetadata") or {}
     print("AGENT usage prompt=%s output=%s thoughts=%s total=%s" % (
-        usage.get("promptTokenCount"), usage.get("candidatesTokenCount"), usage.get("thoughtsTokenCount"), usage.get("totalTokenCount")), flush=True)
+        meta.get("promptTokenCount"), meta.get("candidatesTokenCount"), meta.get("thoughtsTokenCount"), meta.get("totalTokenCount")), flush=True)
     try:
         parts = data["candidates"][0]["content"]["parts"]
         text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
@@ -364,52 +365,21 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
             choices, done = logo_choices, False
     if choices and choices["kind"] == "logo":
         done = False  # not finished while the logo question is open
-    return {"reply": reply, "patch": patch, "done": done, "missing": still_missing, "choices": choices}
+    used = data.get("usageMetadata") or {}
+    return {"reply": reply, "patch": patch, "done": done, "missing": still_missing, "choices": choices,
+            "usage": {"model": data.get("_model") or model or DEFAULT_MODEL, "in": used.get("promptTokenCount") or 0,
+                      "out": (used.get("candidatesTokenCount") or 0) + (used.get("thoughtsTokenCount") or 0)}}
 
 
 TTS_MODELS = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview"]
 TTS_VOICE = "Charon"  # override with GEMINI_VOICE
 
 
-def _wav(pcm, rate=24000):
-    """Gemini sometimes answers raw 16-bit PCM: wrap it so every browser can play it."""
-    header = b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
-    return header + b"data" + struct.pack("<I", len(pcm)) + pcm
-
-
-def speech(text, api_key=None, voice=None, caller=_call_once):
-    """Text to spoken French (Gemini TTS). Returns WAV bytes."""
-    api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
-        raise AgentError(503, "Clé Gemini manquante sur le serveur (GEMINI_API_KEY).")
-    text = re.sub(r"\s+", " ", str(text or "")).strip()[:700]
-    if not text:
-        raise AgentError(400, "Rien à dire.")
-    body = {
-        "contents": [{"parts": [{"text": text}]}],
-        "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {
-            "prebuiltVoiceConfig": {"voiceName": voice or os.environ.get("GEMINI_VOICE") or TTS_VOICE}}}},
-    }
-    def one(model):
-        answer = caller(body, api_key, model)
-        part = answer["candidates"][0]["content"]["parts"][0]["inlineData"]  # no audio in the answer: an error, next model
-        audio = base64.b64decode(part["data"])
-        return audio if part.get("mimeType", "").startswith("audio/wav") else _wav(audio)
-    try:
-        return _race(TTS_MODELS, one, hedge_after=2.5)
-    except urllib.error.HTTPError:
-        raise AgentError(502, "La voix est indisponible pour le moment.")
-    except (urllib.error.URLError, TimeoutError):
-        raise AgentError(504, "La voix ne répond pas.")
-    except (KeyError, IndexError, TypeError, ValueError):
-        raise AgentError(502, "La voix est indisponible pour le moment.")
-
-
 def _tts_body(text, voice):
     return {
         "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {
-            "prebuiltVoiceConfig": {"voiceName": voice or os.environ.get("GEMINI_VOICE") or TTS_VOICE}}}},
+            "prebuiltVoiceConfig": {"voiceName": voice or usage.get_config().get("voice") or os.environ.get("GEMINI_VOICE") or TTS_VOICE}}}},
     }
 
 
@@ -417,8 +387,10 @@ def _open_stream(request):
     return urllib.request.urlopen(request, timeout=20)
 
 
-def speech_stream(text, api_key=None, voice=None, opener=_open_stream):
-    """Spoken French as raw 16-bit 24 kHz mono PCM, yielded while Gemini still produces it (first sound in ~0.7 s)."""
+def speech_stream(text, api_key=None, voice=None, opener=_open_stream, info=None):
+    """Spoken French as raw 16-bit 24 kHz mono PCM, yielded while Gemini still produces it (first sound in ~0.7 s).
+    `info`, if given, receives the model used and the tokens billed (for the cost page)."""
+    info = info if info is not None else {}
     api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
         raise AgentError(503, "Clé Gemini manquante sur le serveur (GEMINI_API_KEY).")
@@ -440,10 +412,18 @@ def speech_stream(text, api_key=None, voice=None, opener=_open_stream):
                 line = line.strip()
                 if not line.startswith(b"data:"):
                     continue
-                part = json.loads(line[5:])["candidates"][0]["content"]["parts"][0].get("inlineData")
+                event = json.loads(line[5:])
+                if event.get("usageMetadata"):
+                    info.update(model=model, tokens_in=event["usageMetadata"].get("promptTokenCount") or 0,
+                                tokens_out=event["usageMetadata"].get("candidatesTokenCount") or 0)
+                part = event["candidates"][0]["content"]["parts"][0].get("inlineData")
                 if part and part.get("data"):
                     started = True
-                    yield base64.b64decode(part["data"])
+                    info.setdefault("model", model)
+                    pcm = base64.b64decode(part["data"])
+                    info["bytes"] = info.get("bytes", 0) + len(pcm)
+                    info["chars"] = len(text)
+                    yield pcm
         except (urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, TypeError):
             if started:
                 return  # cut off in the middle: what was said is said

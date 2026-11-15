@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './Icon'
 import AgentScreen, { ChatMessage } from './Agent'
 import Recap from './Recap'
+import Admin from './Admin'
 import { LangButton, LangContext, Lang, readLang, saveLang, tNow, useT } from './i18n'
 import {
   DayPlan, Form, GROUPS, GROUP_EN, HOTEL_OPTIONS, HotelEntry, SLOTS, applyPatch, dayLabel, datesLabel, emptyDay, initialForm,
@@ -529,7 +530,7 @@ function AppInner() {
   const [authed, setAuthed] = useState(() => !!getPassword())
   const [form, setForm] = useState<Form>(loadDraft)
   // A fresh visit starts with the assistant; a saved draft resumes in the form
-  const [mode, setMode] = useState<'agent' | 'form' | 'recap'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
+  const [mode, setMode] = useState<'agent' | 'form' | 'recap' | 'admin'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
   const [chat, setChat] = useState<ChatMessage[]>([])
   // what the assistant has actually been told so far (the summary shows the rest as « à renseigner »)
   const [known, setKnown] = useState<Set<string>>(() => (loadDraft().client.trim() ? new Set(['client', 'eventTitle', 'startDate', 'numDays', 'numNights', 'numPeople', 'hotels', 'days']) : new Set()))
@@ -684,6 +685,9 @@ function AppInner() {
           </div>
           <div className="flex items-center gap-1">
             <LangButton />
+            <button type="button" className="btn btn-quiet !text-[var(--muted)]" onClick={() => setMode(mode === 'admin' ? 'agent' : 'admin')} aria-label="Admin" title="Admin">
+              <Icon name="chart" className="w-4 h-4" />
+            </button>
             {mode !== 'agent' && (
               <button type="button" className="btn btn-quiet" onClick={() => setMode('agent')}>
                 <Icon name="chat" className="w-4 h-4" /><span className="hidden sm:inline">{t('Assistant', 'Assistant')}</span>
@@ -705,7 +709,9 @@ function AppInner() {
         </div>
       </header>
 
-      {mode === 'agent' ? (
+      {mode === 'admin' ? (
+        <Admin apiUrl={API_URL} onBack={() => setMode('agent')} />
+      ) : mode === 'agent' ? (
         <AgentScreen
           form={form}
           known={known}

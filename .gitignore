@@ -16,3 +16,5 @@ venv/
 backend/slices/
 backend/*.pptx
 frontend/.env.local
+
+backend/data/
