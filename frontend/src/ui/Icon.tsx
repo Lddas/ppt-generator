@@ -26,6 +26,7 @@ const PATHS: Record<string, string> = {
   mic: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
   send: 'm22 2-7 20-4-9-9-4zM22 2 11 13',
   chat: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
+  wave: 'M2 12h2M6 8v8M10 4v16M14 8v8M18 6v12M22 12h-2',
   refresh: 'M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5',
 }
 

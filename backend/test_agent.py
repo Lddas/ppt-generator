@@ -50,6 +50,12 @@ assert agent.merge(merged, {"days": [{"day": 1, "slots": {"lunch": ""}}]})["days
 # the list the website shows as a picker
 r = turn({"reply": "Voici les hôtels", "done": False, "showChoices": "hotels"})
 assert r["choices"]["kind"] == "hotels" and "BARCELO PALMERAIE" in r["choices"]["options"]
+assert r["choices"]["open"] is True
+r = turn({"reply": "Tu as une idée ?", "done": False, "offerChoices": "meals"})
+assert r["choices"]["kind"] == "meals" and r["choices"]["open"] is False
+r = turn({"reply": "Le logo ?", "done": False, "showChoices": "logo"})
+assert r["choices"]["kind"] == "logo" and r["choices"]["options"] == []
+assert turn({"reply": "ok", "done": False, "offerChoices": "logo"})["choices"] is None
 assert turn({"reply": "ok", "done": False, "showChoices": "n'importe quoi"})["choices"] is None
 assert turn({"reply": "ok", "done": False, "showChoices": None})["choices"] is None
 

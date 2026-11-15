@@ -20,7 +20,7 @@ SLOT_KEYS = ["breakfast", "morning", "lunch", "afternoon", "dinner"]
 SLOT_LABELS = {"breakfast": "petit-déjeuner", "morning": "matinée", "lunch": "déjeuner",
                "afternoon": "après-midi", "dinner": "dîner"}
 CHOICE_KINDS = {"hotels": "hôtels", "breakfasts": "petits-déjeuners", "meals": "restaurants et soirées",
-                "activities": "activités"}
+                "activities": "activités", "logo": "logo"}
 CLEAR = "AUCUN"  # what the model writes to empty a cell
 
 _FORM_PROPERTIES = {
@@ -46,9 +46,11 @@ SCHEMA = {
     "type": "OBJECT",
     "properties": {"reply": {"type": "STRING"}, "done": {"type": "BOOLEAN"},
                    "showChoices": {"type": "STRING", "nullable": True,
-                                   "description": "hotels, breakfasts, meals ou activities : affiche la liste cliquable ; null sinon"},
+                                   "description": "hotels, breakfasts, meals, activities ou logo : affiche la liste cliquable (ou la zone de dépôt du logo) ; null sinon"},
+                   "offerChoices": {"type": "STRING", "nullable": True,
+                                    "description": "hotels, breakfasts, meals ou activities : ajoute un bouton « Voir les options » sous ta question ; null sinon"},
                    **{key: {**value, "nullable": True} for key, value in _FORM_PROPERTIES.items()}},
-    "required": ["reply", "done", "showChoices", *_FORM_PROPERTIES],
+    "required": ["reply", "done", "showChoices", "offerChoices", *_FORM_PROPERTIES],
 }
 
 
@@ -87,7 +89,9 @@ Programme d'un jour : 5 cases fixes, breakfast (petit-déjeuner), morning (matin
 - ACTIVITÉS ET TRANSFERTS (matinée, après-midi) : {" | ".join(names["activities"])}
 Si l'utilisateur demande quelque chose qui n'existe pas, propose l'option la plus proche de la liste. N'invente aucun nom. Pour vider une case, écris "{CLEAR}". Les notes manuelles (notes) sont des rappels libres : n'en ajoute que si on te le demande.
 
-Choix dans une liste (hôtel, petit-déjeuner, restaurant, activité) : n'écris JAMAIS la liste des noms dans reply, le site sait l'afficher joliment. Quand tu demandes de choisir, demande d'abord si la personne a déjà une idée et propose-lui de lui montrer les options. Quand elle te demande les options, la liste, ce qui existe ou « propose-moi », mets showChoices à hotels, breakfasts, meals (déjeuner, dîner) ou activities (matinée, après-midi) et réponds en une courte phrase (« Voici les hôtels, clique sur celui que tu veux »). Sinon showChoices reste null.
+Choix dans une liste (hôtel, petit-déjeuner, restaurant, activité) : n'écris JAMAIS la liste des noms dans reply, le site sait l'afficher joliment. Chaque fois que tu poses une question dont la réponse est un hôtel, un petit-déjeuner, un restaurant ou une activité, dis-le dans ta phrase (« tu as déjà une idée, ou tu veux voir les options ? ») et mets offerChoices à hotels, breakfasts, meals (déjeuner, dîner) ou activities (matinée, après-midi) : le site ajoute un bouton « Voir les options ». Quand la personne te demande les options, la liste, ce qui existe ou « propose-moi », mets showChoices au même type et réponds en une courte phrase (« Voici les hôtels, clique sur celui que tu veux »). Sinon showChoices et offerChoices restent null.
+
+Logo : hasLogo dit si un logo est déjà ajouté. Quand le client, les dates, l'hôtel et le programme sont remplis, hasLogo est false et que tu n'as pas encore posé la question, demande si la personne a le logo du client et mets showChoices à logo (le site affiche une zone de dépôt, on peut aussi passer). Ne mets done à true qu'après avoir posé cette question.
 
 N'invente jamais une information : ne remplis eventTitle que si on te le dit, et pour les chambres mets rooms à 0 puis demande le nombre : ne le déduis jamais du nombre de personnes. Un champ non mentionné reste null.
 
@@ -294,7 +298,14 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
     reply = str(answer.get("reply") or "").strip() or "Je n'ai pas bien compris, tu peux reformuler ?"
     if rejected:
         reply += " (Je n'ai pas trouvé : " + ", ".join(sorted(set(rejected))) + ".)"
-    kind = str(answer.get("showChoices") or "").strip().lower()
-    choices = {"kind": kind, "label": CHOICE_KINDS[kind], "options": names[kind]} if kind in CHOICE_KINDS and names.get(kind) else None
+    choices = None
+    for field, opened in (("showChoices", True), ("offerChoices", False)):
+        kind = str(answer.get(field) or "").strip().lower()
+        if kind == "logo" and opened:
+            choices = {"kind": "logo", "label": CHOICE_KINDS["logo"], "options": [], "open": True}
+        elif kind in CHOICE_KINDS and kind != "logo" and names.get(kind):
+            choices = {"kind": kind, "label": CHOICE_KINDS[kind], "options": names[kind], "open": opened}
+        if choices:
+            break
     return {"reply": reply, "patch": patch, "done": bool(answer.get("done")) and not still_missing,
             "missing": still_missing, "choices": choices}
