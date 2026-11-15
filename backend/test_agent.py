@@ -86,4 +86,25 @@ try:
     raise SystemExit("expected an error for empty text")
 except agent.AgentError as error:
     assert error.status == 400
+# fallbacks: an overloaded model is skipped at once, a slow one is raced against the next
+import io, time, urllib.error
+def http(code): return urllib.error.HTTPError("u", code, "x", {}, io.BytesIO(b"{}"))
+real = agent._call_once
+def fake_call(behaviour):
+    def call(body, key, model):
+        action = behaviour[model]
+        if callable(action): return action()
+        raise http(action)
+    return call
+agent._call_once = fake_call({"m1": 503, "gemini-3.1-flash-lite": 429, "gemini-3.5-flash": lambda: "third"})
+assert agent.call_gemini({}, "k", "m1") == "third"
+agent._call_once = fake_call({"m1": lambda: (time.sleep(1.5), "slow")[1], "gemini-3.1-flash-lite": lambda: "fast"})
+t0 = time.time(); assert agent.call_gemini({}, "k", "m1", hedge_after=0.2) == "fast" and time.time() - t0 < 1
+agent._call_once = fake_call({m: 503 for m in ["m1", *agent.FALLBACK_MODELS]})
+try:
+    agent.call_gemini({}, "k", "m1")
+    raise SystemExit("expected an error when every model is down")
+except agent.AgentError as error:
+    assert error.status == 502
+agent._call_once = real
 print("test_agent: ok")

@@ -5,6 +5,7 @@ The model answers with a JSON object: a reply to show, a patch of the form, and 
 Everything it proposes is checked here against the real lists (hotels, restaurants, activities).
 """
 import base64
+import concurrent.futures
 import datetime
 import difflib
 import io
@@ -236,27 +237,45 @@ def _call_once(body, api_key, model):
     else:  # newer key formats (AQ.…) are only accepted as a query parameter
         url += "?key=" + urllib.parse.quote(api_key, safe="")
     request = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
-    with urllib.request.urlopen(request, timeout=40) as response:
+    with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
-def call_gemini(body, api_key, model):
-    """Calls the model; when Google is overloaded (429/500/503/404) tries the next Flash."""
-    last = None
-    for candidate in [model] + [m for m in FALLBACK_MODELS if m != model]:
-        try:
-            return _call_once(body, api_key, candidate)
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode("utf-8", "replace")[:300]
-            if error.code in (400, 403) and "API key" in detail:
-                raise AgentError(502, "La clé Gemini est refusée. Vérifie GEMINI_API_KEY sur le serveur.")
-            last = AgentError(429 if error.code == 429 else 502, "Gemini est saturé pour le moment, réessaie dans quelques secondes."
-                              if error.code in (429, 503) else f"Gemini a répondu {error.code}.")
-            if error.code not in (404, 429, 500, 503):
+def call_gemini(body, api_key, model, hedge_after=4.0):
+    """Calls the model. If it is overloaded (429/500/503/404) or slow (> hedge_after s) the next Flash is tried
+    at the same time, and the first answer wins: one slow model never holds the conversation up."""
+    models = [model] + [m for m in FALLBACK_MODELS if m != model]
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(models))
+    pending, started, last, hedge_wait = set(), 0, None, False
+    try:
+        while True:
+            if started < len(models) and (not pending or last is not None or hedge_wait):
+                pending.add(pool.submit(_call_once, body, api_key, models[started]))
+                started += 1
+            hedge_wait = False
+            if not pending:
+                raise last or AgentError(504, "Gemini ne répond pas, réessaie dans un instant.")
+            done, pending = concurrent.futures.wait(pending, timeout=hedge_after, return_when=concurrent.futures.FIRST_COMPLETED)
+            if not done:
+                hedge_wait = True  # nothing yet: start the next model without cancelling this one
+                continue
+            for future in done:
+                try:
+                    return future.result()
+                except urllib.error.HTTPError as error:
+                    detail = error.read().decode("utf-8", "replace")[:300]
+                    if error.code in (400, 403) and "API key" in detail:
+                        raise AgentError(502, "La clé Gemini est refusée. Vérifie GEMINI_API_KEY sur le serveur.")
+                    last = AgentError(429 if error.code == 429 else 502, "Gemini est saturé pour le moment, réessaie dans quelques secondes."
+                                      if error.code in (429, 503) else f"Gemini a répondu {error.code}.")
+                    if error.code not in (404, 429, 500, 503):
+                        raise last
+                except (urllib.error.URLError, TimeoutError):
+                    last = AgentError(504, "Gemini ne répond pas, réessaie dans un instant.")
+            if started >= len(models) and not pending:
                 raise last
-        except (urllib.error.URLError, TimeoutError):
-            last = AgentError(504, "Gemini ne répond pas, réessaie dans un instant.")
-    raise last
+    finally:
+        pool.shutdown(wait=False)
 
 
 def respond(messages, form, names, today=None, api_key=None, model=None, caller=call_gemini, language="fr"):

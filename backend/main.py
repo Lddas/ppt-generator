@@ -471,7 +471,10 @@ def speak(payload: dict, request: Request, x_app_password: str = Header(None)):
 
 @app.get("/")
 async def root():
-    return {"status": "ok"}
+    """Health check; also tells which version and model are live (handy to check a deploy)."""
+    return {"status": "ok", "commit": (os.environ.get("RENDER_GIT_COMMIT") or "")[:7],
+            "model": os.environ.get("GEMINI_MODEL") or agent_module.DEFAULT_MODEL,
+            "voice": os.environ.get("GEMINI_VOICE") or agent_module.TTS_VOICE}
 
 @app.get("/debug")
 async def debug():
