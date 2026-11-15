@@ -39,6 +39,10 @@ const ACTIVITIES = [
 
 const TRANSFERS = ['ARRIVEE', 'DEPART', 'DEPART AEROPORT EN 4X4']
 
+export const GROUP_EN: Record<string, string> = {
+  'Petit-déjeuner': 'Breakfast', 'Restaurants et soirées': 'Restaurants and evenings', Activités: 'Activities', 'Arrivée et départ': 'Arrival and departure',
+}
+
 export const GROUPS: Record<string, string[]> = {
   'Petit-déjeuner': BREAKFASTS,
   'Restaurants et soirées': RESTAURANTS,
@@ -48,11 +52,11 @@ export const GROUPS: Record<string, string[]> = {
 
 // The agenda of the design has 5 fixed cells per day, in this order.
 export const SLOTS = [
-  { key: 'breakfast', label: 'Petit-déjeuner', icon: 'sun', groups: ['Petit-déjeuner', 'Arrivée et départ', 'Activités'] },
-  { key: 'morning', label: 'Matinée', icon: 'mountain', groups: ['Activités', 'Arrivée et départ', 'Petit-déjeuner'] },
-  { key: 'lunch', label: 'Déjeuner', icon: 'utensils', groups: ['Restaurants et soirées', 'Activités'] },
-  { key: 'afternoon', label: 'Après-midi', icon: 'compass', groups: ['Activités', 'Arrivée et départ'] },
-  { key: 'dinner', label: 'Dîner', icon: 'moon', groups: ['Restaurants et soirées', 'Activités'] },
+  { key: 'breakfast', label: 'Petit-déjeuner', en: 'Breakfast', icon: 'sun', groups: ['Petit-déjeuner', 'Arrivée et départ', 'Activités'] },
+  { key: 'morning', label: 'Matinée', en: 'Morning', icon: 'mountain', groups: ['Activités', 'Arrivée et départ', 'Petit-déjeuner'] },
+  { key: 'lunch', label: 'Déjeuner', en: 'Lunch', icon: 'utensils', groups: ['Restaurants et soirées', 'Activités'] },
+  { key: 'afternoon', label: 'Après-midi', en: 'Afternoon', icon: 'compass', groups: ['Activités', 'Arrivée et départ'] },
+  { key: 'dinner', label: 'Dîner', en: 'Dinner', icon: 'moon', groups: ['Restaurants et soirées', 'Activités'] },
 ] as const
 
 export type HotelEntry = { hotelName: string; rooms: number }
@@ -75,21 +79,21 @@ function addDays(iso: string, n: number): Date | null {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-export function dayLabel(startDate: string, index: number): string {
+export function dayLabel(startDate: string, index: number, locale = 'fr-FR'): string {
   const d = startDate ? addDays(startDate, index) : null
-  return d ? capitalize(d.toLocaleDateString('fr-FR', { weekday: 'long', ...FR_MONTHS_ONLY })) : ''
+  return d ? capitalize(d.toLocaleDateString(locale, { weekday: 'long', ...FR_MONTHS_ONLY })) : ''
 }
 
-export function datesLabel(startDate: string, numDays: number): string {
+export function datesLabel(startDate: string, numDays: number, locale = 'fr-FR'): string {
   const first = startDate ? addDays(startDate, 0) : null
   const last = startDate ? addDays(startDate, numDays - 1) : null
   if (!first || !last) return ''
+  const to = locale.startsWith('en') ? 'to' : 'au'
+  const month = (x: Date) => x.toLocaleDateString(locale, FR_MONTHS_ONLY)
   const year = last.getFullYear()
-  if (numDays <= 1) return `${first.toLocaleDateString('fr-FR', FR_MONTHS_ONLY)} ${year}`
-  if (first.getMonth() === last.getMonth()) {
-    return `${first.getDate()} au ${last.toLocaleDateString('fr-FR', FR_MONTHS_ONLY)} ${year}`
-  }
-  return `${first.toLocaleDateString('fr-FR', FR_MONTHS_ONLY)} au ${last.toLocaleDateString('fr-FR', FR_MONTHS_ONLY)} ${year}`
+  if (numDays <= 1) return `${month(first)} ${year}`
+  if (first.getMonth() === last.getMonth()) return `${first.getDate()} ${to} ${month(last)} ${year}`
+  return `${month(first)} ${to} ${month(last)} ${year}`
 }
 
 export type Form = {
