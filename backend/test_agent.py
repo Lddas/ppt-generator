@@ -36,7 +36,7 @@ r = turn({"reply": "ok", "done": False, "form": {"startDate": "2026-13-45", "num
 assert r["patch"] == {}
 
 # done only counts when nothing essential is missing
-form = {"client": "A", "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
+form = {"client": "A", "hasLogo": True, "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
         "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
 assert turn({"reply": "Prêt ?", "done": True}, form)["done"] is True
 form["days"] = [{"slots": ["", "", "", "", ""], "notes": []}]
@@ -48,6 +48,19 @@ bare = {"client": "A", "startDate": "2026-11-21", "numDays": None, "numPeople": 
 missing = agent.missing_fields(bare)
 assert "nombre de jours" in missing and "nombre de personnes" in missing and "nombre de chambres" in missing
 assert turn({"reply": "Prêt ?", "done": True}, bare)["done"] is False
+
+# the logo drop zone opens whenever the assistant asks for the logo, or before finishing if it forgot
+r = turn({"reply": "Tu as le logo du client ?", "done": False}, {"client": "A"})
+assert r["choices"] and r["choices"]["kind"] == "logo" and r["choices"]["open"] is True
+assert turn({"reply": "Le logo ? Sinon c'est prêt.", "done": True}, {"client": "A"})["done"] is False
+done_form = {"client": "A", "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
+             "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
+r = turn({"reply": "Prêt !", "done": True}, done_form)
+assert r["done"] is False and r["choices"]["kind"] == "logo" and "logo" in r["reply"]
+assert turn({"reply": "Prêt !", "done": True}, {**done_form, "hasLogo": True})["choices"] is None  # logo already added
+r = agent.respond([{"role": "user", "text": "x"}, {"role": "model", "text": "Tu as le logo ?"}, {"role": "user", "text": "Pas de logo pour le moment"}],
+                  done_form, NAMES, api_key="k", model="m", caller=fake({"reply": "Ok, sans logo. Prêt ?", "done": True}))
+assert r["done"] is True and r["choices"] is None  # skipping it ends the question
 
 # clearing a cell, and merging into a day
 merged = agent.merge(form, {"days": [{"day": 1, "slots": {"lunch": "DAR CHERIFA"}}]})
