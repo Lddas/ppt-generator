@@ -127,4 +127,24 @@ try:
 except agent.AgentError as error:
     assert error.status == 502
 agent._call_once = real
+# the streamed voice: PCM pieces come out as they arrive; an overloaded model is skipped before any sound
+def sse(*pieces):
+    return [b"data: " + json.dumps({"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/l16", "data": base64.b64encode(p).decode()}}]}}]}).encode() + b"\n" for p in pieces]
+assert list(agent.speech_stream("Bonjour", api_key="k", opener=lambda r: sse(b"\x01\x02", b"\x03\x04"))) == [b"\x01\x02", b"\x03\x04"]
+calls = []
+def second_model(request):
+    calls.append(request.full_url)
+    if len(calls) == 1:
+        raise http(429)
+    return sse(b"ok")
+assert list(agent.speech_stream("Bonjour", api_key="k", opener=second_model)) == [b"ok"] and len(calls) == 2
+def dies_midway(request):
+    yield from sse(b"ab")
+    raise TimeoutError()
+assert list(agent.speech_stream("Bonjour", api_key="k", opener=dies_midway)) == [b"ab"]
+try:
+    list(agent.speech_stream("Bonjour", api_key="k", opener=lambda r: (_ for _ in ()).throw(http(503))))
+    raise SystemExit("expected an error when every voice model is down")
+except agent.AgentError as error:
+    assert error.status == 504
 print("test_agent: ok")

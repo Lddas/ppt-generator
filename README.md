@@ -58,3 +58,6 @@ La page d'accueil propose un assistant qui pose des questions et remplit le form
 - Sans clé, l'assistant répond qu'il n'est pas configuré et le formulaire manuel reste utilisable.
 - Test sans appeler Gemini : `cd backend && python test_agent.py`.
 - La dictée utilise la reconnaissance vocale du navigateur (Chrome, Edge, Safari) : elle ne demande aucune clé.
+
+### Voix de l’assistant et quota Gemini
+La voix utilise Gemini TTS (`gemini-3.8-flash-lite-tts`, repli `gemini-3.8-flash-tts`), diffusée en streaming : le premier son arrive en ~1 s. **Sur l’offre gratuite Google, ces modèles sont limités à 10 requêtes par jour et par modèle**, ce qui coupe la voix très vite. Pour un usage réel, activer la facturation sur le projet Google de la clé (aistudio.google.com → Clés API → configurer la facturation) : une réponse parlée coûte environ 0,1 centime, et cela lève aussi la limite du modèle texte `gemini-3.5-flash`.

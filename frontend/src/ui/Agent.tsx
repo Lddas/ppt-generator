@@ -14,7 +14,7 @@ const TEXTS = {
     thinking: 'Je réfléchis…', talking: 'Je parle… (parle ou clique sur la bulle pour me couper)', listening: 'Je t’écoute, parle…', dictating: 'Je t’écoute…', typing: 'Écris ou dicte ta réponse…',
     conversation: 'Conversation', stop: 'Arrêter', see: 'Voir les',
     allDone: 'Tout est rempli.', doneHelp: 'Ouvre le récapitulatif pour tout relire, modifier si besoin, puis générer la présentation. Tu peux aussi continuer à ajuster ici.',
-    recap: 'Voir le récapitulatif', micBlocked: 'Le micro est bloqué. Autorise-le pour ce site dans les réglages du navigateur.',
+    recap: 'Voir le récapitulatif', voiceDown: 'La voix de l’assistant est indisponible pour le moment (quota Gemini atteint). Les réponses restent écrites, tu peux continuer à parler.', micBlocked: 'Le micro est bloqué. Autorise-le pour ce site dans les réglages du navigateur.',
     labels: {} as Record<string, string>,
   },
   en: {
@@ -22,7 +22,7 @@ const TEXTS = {
     thinking: 'Thinking…', talking: 'Speaking… (talk or click the orb to interrupt)', listening: 'I’m listening, go ahead…', dictating: 'Listening…', typing: 'Type or dictate your answer…',
     conversation: 'Conversation', stop: 'Stop', see: 'See the',
     allDone: 'Everything is filled in.', doneHelp: 'Open the summary to review everything, edit if needed, then generate the presentation. You can also keep adjusting here.',
-    recap: 'See the summary', micBlocked: 'The microphone is blocked. Allow it for this site in your browser settings.',
+    recap: 'See the summary', voiceDown: 'The assistant’s voice is unavailable right now (Gemini quota reached). Replies stay in writing, you can keep talking.', micBlocked: 'The microphone is blocked. Allow it for this site in your browser settings.',
     labels: { hotels: 'hotels', breakfasts: 'breakfasts', meals: 'restaurants & evenings', activities: 'activities' } as Record<string, string>,
   },
 }
@@ -80,6 +80,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
   const spokenId = useRef(0)
   const guard = useRef<string | null>(null) // what the assistant is saying, while it talks
   const skipResults = useRef(0)
+  const voiceNotice = useRef(false)
   const resultCount = useRef(0)
   const recognitionOn = useRef(false)
   const interruptRef = useRef<() => void>(() => {})
@@ -123,6 +124,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
           messages: history.filter(m => m.role !== 'error').map(m => ({ role: m.role, text: m.text })),
           form: forAgent(form, !!logoFile, known),
           language: lang,
+          voice: conversationRef.current,
         }),
       })
       if (!res.ok) {
@@ -186,8 +188,12 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
       detector.current.arm(interrupt)
       startListening(text)
     }
-    speaker.current!.say(text, lang).then(() => {
+    speaker.current!.say(text).then(result => {
       if (id !== spokenId.current) return // interrupted, or a newer reply took over
+      if (result === 'unavailable' && !voiceNotice.current) {
+        voiceNotice.current = true
+        setMessages(m => [...m, { role: 'error', text: t.voiceDown }])
+      }
       detector.current.disarm()
       setSpeaking(false)
       if (conversationRef.current) startListening()
