@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './Icon'
 import AgentScreen, { ChatMessage } from './Agent'
+import Recap from './Recap'
 import {
   DayPlan, Form, GROUPS, HOTEL_OPTIONS, HotelEntry, SLOTS, applyPatch, dayLabel, datesLabel, emptyDay, initialForm,
 } from './data'
@@ -470,7 +471,7 @@ export default function App() {
   const [authed, setAuthed] = useState(() => !!getPassword())
   const [form, setForm] = useState<Form>(loadDraft)
   // A fresh visit starts with the assistant; a saved draft resumes in the form
-  const [mode, setMode] = useState<'agent' | 'form'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
+  const [mode, setMode] = useState<'agent' | 'form' | 'recap'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
   const [chat, setChat] = useState<ChatMessage[]>([])
   const [step, setStep] = useState(0)
   const [maxReached, setMaxReached] = useState(0)
@@ -526,8 +527,10 @@ export default function App() {
   ]
 
   function goTo(n: number) {
-    setStep(n)
     setMaxReached(m => Math.max(m, n))
+    // the last step is the full-page recap
+    if (n >= STEPS.length - 1) setMode('recap')
+    else { setStep(n); setMode('form') }
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -612,9 +615,14 @@ export default function App() {
             <span className="hidden sm:block text-base text-[var(--muted)]">Générateur de présentations</span>
           </div>
           <div className="flex items-center gap-1">
-            {mode === 'form' && (
+            {mode !== 'agent' && (
               <button type="button" className="btn btn-quiet" onClick={() => setMode('agent')}>
                 <Icon name="chat" className="w-4 h-4" /><span className="hidden sm:inline">Assistant</span>
+              </button>
+            )}
+            {mode === 'agent' && form.client.trim() && (
+              <button type="button" className="btn btn-quiet" onClick={() => setMode('recap')}>
+                <Icon name="file" className="w-4 h-4" /><span className="hidden sm:inline">Récapitulatif</span>
               </button>
             )}
             <button type="button" className="btn btn-quiet" onClick={() => { if (confirm('Effacer le formulaire et recommencer ?')) reset() }}>
@@ -637,8 +645,18 @@ export default function App() {
           apiUrl={API_URL}
           password={getPassword()}
           onManual={() => setMode('form')}
-          onReview={() => { setMode('form'); setMaxReached(3); setStep(3) }}
+          onReview={() => { setMaxReached(3); setMode('recap'); window.scrollTo({ top: 0 }) }}
           summary={summary}
+        />
+      ) : mode === 'recap' ? (
+        <Recap
+          form={form}
+          nights={nights}
+          datesText={datesText}
+          hasLogo={!!logoFile}
+          generation={{ busy, elapsed, stage, error, result, onGenerate: generate, onCancel: () => abortRef.current?.abort() }}
+          onAssistant={() => setMode('agent')}
+          onEdit={n => { setStep(n); setMode('form'); window.scrollTo({ top: 0 }) }}
         />
       ) : (
       <div className="mx-auto grid max-w-[1400px] gap-6 px-5 py-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[12rem_minmax(0,1fr)_19rem]">
@@ -668,53 +686,6 @@ export default function App() {
             {step === 1 && <StepHotels form={form} set={set} />}
             {step === 2 && <StepProgram form={form} set={set} day={day} setDay={setDay} />}
 
-            {step === 3 && (
-              <div>
-                <div className="xl:hidden mb-6">{summary}</div>
-
-                {busy && (
-                  <div className="inner p-5 rise" role="status" aria-live="polite">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-semibold">{stage}</p>
-                        <p className="text-sm text-[var(--muted)]">Cela peut prendre jusqu’à 2 minutes · {elapsed} s</p>
-                      </div>
-                      <button type="button" className="btn btn-ghost" onClick={() => abortRef.current?.abort()}>Annuler</button>
-                    </div>
-                    <div className="indeterminate relative mt-4 h-1.5 overflow-hidden rounded-full bg-[var(--sand)]" />
-                  </div>
-                )}
-
-                {error && !busy && (
-                  <div role="alert" className="flex gap-3 rounded-[12px] border border-[#e8c3be] bg-[#fbeceb] p-4 text-[var(--danger)] rise">
-                    <Icon name="alert" className="w-5 h-5 mt-0.5 flex-none" />
-                    <div><p className="font-semibold">La génération a échoué</p><p className="text-sm mt-0.5">{error}</p></div>
-                  </div>
-                )}
-
-                {result && !busy && (
-                  <div className="rounded-[12px] border border-[#bfd8c9] bg-[#edf6f0] p-5 rise" role="status">
-                    <div className="flex items-start gap-3 text-[var(--ok)]">
-                      <Icon name="check" className="w-5 h-5 mt-0.5 flex-none" strokeWidth={2.5} />
-                      <div>
-                        <p className="font-semibold">Présentation prête</p>
-                        <p className="text-sm">{result.filename} · {(result.size / 1048576).toFixed(1)} Mo — le téléchargement a démarré.</p>
-                      </div>
-                    </div>
-                    <a href={result.url} download={result.filename} className="btn btn-ghost mt-4 bg-white">
-                      <Icon name="download" className="w-4 h-4" /> Télécharger à nouveau
-                    </a>
-                  </div>
-                )}
-
-                {!busy && (
-                  <button type="button" onClick={generate} className="btn btn-primary mt-6 w-full !min-h-[52px] text-base">
-                    <Icon name="file" className="w-5 h-5" />
-                    {result ? 'Générer à nouveau' : 'Générer la présentation'}
-                  </button>
-                )}
-              </div>
-            )}
           </section>
 
           <div className="mt-5 flex items-center justify-between gap-3">
@@ -725,7 +696,7 @@ export default function App() {
               <div className="flex items-center gap-3">
                 {!stepValid[step] && <span className="hidden sm:block text-sm text-[var(--muted)]">{blocker[step]}</span>}
                 <button type="button" className="btn btn-primary" onClick={() => goTo(step + 1)} disabled={!stepValid[step]}>
-                  Continuer <Icon name="right" className="w-4 h-4" />
+                  {step === STEPS.length - 2 ? 'Voir le récapitulatif' : 'Continuer'} <Icon name="right" className="w-4 h-4" />
                 </button>
               </div>
             )}

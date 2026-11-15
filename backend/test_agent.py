@@ -47,6 +47,12 @@ merged = agent.merge(form, {"days": [{"day": 1, "slots": {"lunch": "DAR CHERIFA"
 assert merged["days"][0]["slots"][2] == "DAR CHERIFA"
 assert agent.merge(merged, {"days": [{"day": 1, "slots": {"lunch": ""}}]})["days"][0]["slots"][2] == ""
 
+# the list the website shows as a picker
+r = turn({"reply": "Voici les hôtels", "done": False, "showChoices": "hotels"})
+assert r["choices"]["kind"] == "hotels" and "BARCELO PALMERAIE" in r["choices"]["options"]
+assert turn({"reply": "ok", "done": False, "showChoices": "n'importe quoi"})["choices"] is None
+assert turn({"reply": "ok", "done": False, "showChoices": None})["choices"] is None
+
 # plain text instead of JSON still gives a reply
 r = agent.respond([{"role": "user", "text": "x"}], {}, NAMES, api_key="k", model="m",
                   caller=lambda *a: {"candidates": [{"content": {"parts": [{"text": "Bonjour !"}]}}]})
