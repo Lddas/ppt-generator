@@ -5,7 +5,7 @@ import Recap from './Recap'
 import Admin from './Admin'
 import { LangButton, LangContext, Lang, readLang, saveLang, tNow, useT } from './i18n'
 import {
-  DayPlan, Form, GROUPS, GROUP_EN, HOTEL_OPTIONS, HotelEntry, SLOTS, applyPatch, dayLabel, datesLabel, emptyDay, initialForm,
+  DayPlan, Form, GROUPS, GROUP_EN, fitsSlot, isDeparture, HOTEL_OPTIONS, HotelEntry, SLOTS, applyPatch, dayLabel, datesLabel, emptyDay, initialForm,
 } from './data'
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
@@ -370,15 +370,19 @@ function StepProgram({ form, set, day, setDay }: {
               </span>
               {t(slot.label, slot.en)}
             </label>
-            <select id={`slot-${k}`} className="select" value={plan.slots[k]}
-              onChange={e => update({ slots: plan.slots.map((s, i) => (i === k ? e.target.value : s)) })}>
+            <select id={`slot-${k}`} className="select" value={plan.slots[k]} disabled={plan.slots.slice(0, k).some(isDeparture)}
+              onChange={e => {
+                const value = e.target.value
+                // after a departure the day is over: the following cells are emptied
+                update({ slots: plan.slots.map((s, i) => (i === k ? value : isDeparture(value) && i > k ? '' : s)) })
+              }}>
               <option value="">— {t('Aucun', 'None')} —</option>
-              {plan.slots[k] && !slot.groups.some(g => GROUPS[g].includes(plan.slots[k])) && (
+              {plan.slots[k] && !slot.groups.some(g => GROUPS[g].filter(o => fitsSlot(slot.key, o)).includes(plan.slots[k])) && (
                 <option value={plan.slots[k]}>{plan.slots[k]}</option>
               )}
               {slot.groups.map(g => (
                 <optgroup key={g} label={t(g, GROUP_EN[g])}>
-                  {GROUPS[g].map(o => <option key={g + o} value={o}>{o}</option>)}
+                  {GROUPS[g].filter(o => fitsSlot(slot.key, o)).map(o => <option key={g + o} value={o}>{o}</option>)}
                 </optgroup>
               ))}
             </select>

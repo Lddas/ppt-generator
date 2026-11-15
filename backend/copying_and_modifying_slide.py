@@ -771,6 +771,98 @@ DA_FLIGHT_LEGS = [
 FLIGHT_DURATION = "3h30"  # Paris - Marrakech, nearly always the same; edited by hand when it is not
 
 
+def _hotel_card(name):
+    """Name (with stars) and main photo of a hotel, read from its first slide in the hotels deck."""
+    entry = data.get(name) or {}
+    if "index" not in entry:
+        return None
+    link, index = entry["ppt"], entry["index"] - 1
+    path, position = _slices().get((link, index), (None, None))
+    try:
+        slide = (_load(path) if path and os.path.exists(path) else _load(link)).slides[position if path else index]
+    except Exception as e:
+        print(f"Cannot read the slide of {name}: {e}")
+        return None
+    skip = {"HÉBERGEMENT", "HEBERGEMENT", "A REVOIR", "VOTRE DÉJEUNER", "MARRAKECH"}
+    shorts = [sh.text_frame.text.strip().replace("\n", " ") for sh in slide.shapes
+              if sh.has_text_frame and 0 < len(sh.text_frame.text.strip()) <= 45 and sh.text_frame.text.strip().upper() not in skip]
+    title = shorts[0] if shorts else ""
+    if re.match(r"^\d\*", title) and len(shorts) > 1:  # the stars are on their own line ("5* LUXE" above "LA MAMOUNIA")
+        title = f"{shorts[1]} – {title}"
+    if not title or (name.split()[0].upper() not in title.upper() and not title.rstrip().endswith("*")):
+        title = name  # camps and bivouacs: their slide has a tagline, not the name
+    blob = None
+    for sh in slide.shapes:
+        try:
+            blob = sh.image.blob
+            break
+        except Exception:
+            continue
+    return {"title": title.upper(), "blob": blob}
+
+
+def _cover_picture(slide, blob, left, top, width, height):
+    """Fill the box with the picture (cropped, never stretched)."""
+    pic = slide.shapes.add_picture(io.BytesIO(blob), int(left), int(top), int(width), int(height))
+    image_w, image_h = pic.image.size
+    box, ratio = width / height, image_w / image_h
+    if ratio > box:  # too wide: crop the sides
+        pic.crop_left = pic.crop_right = (1 - box / ratio) / 2
+    else:
+        pic.crop_top = pic.crop_bottom = (1 - ratio / box) / 2
+    return pic
+
+
+def _set_lines(el, lines, size=None):
+    """Replace the text of a placeholder by several paragraphs that share the formatting of its first one."""
+    _set_text(el, lines[0], size)
+    tx = el.find('p:txBody', _NS)
+    first = tx.find('a:p', _NS)
+    for line in lines[1:]:
+        paragraph = copy.deepcopy(first)
+        for t in paragraph.iter(_A + 't'):
+            t.text = line
+        tx.append(paragraph)
+
+
+def add_hotel_proposals(pasteIntoPres, hotels):
+    """When several hotels are proposed: the « PROPOSITIONS D’HEBERGEMENT » slide listing them (names + photos)."""
+    cards = [c for c in (_hotel_card(h.get("hotelName")) for h in hotels) if c]
+    if len(cards) < 2:
+        return
+    slide, ph = _copy_slide(_load("liste_HOTELS.pptx"), 1, pasteIntoPres)
+    for sh in [sh for sh in slide.shapes if sh.shape_type == 13]:  # the example's photos (Es Saadi)
+        sh._element.getparent().remove(sh._element)
+    height, width = pasteIntoPres.slide_height, pasteIntoPres.slide_width
+    photos = [c for c in cards if c["blob"]][:3]
+    if photos:
+        _cover_picture(slide, photos[0]["blob"], 0, 0, 4940910, height)
+    right = 9875520
+    if len(photos) == 2:
+        _cover_picture(slide, photos[1]["blob"], right, 274320, width - right - 274320, height - 548640)
+    elif len(photos) == 3:
+        half = (height - 548640 - 182880) // 2
+        _cover_picture(slide, photos[1]["blob"], right, 274320, width - right - 274320, half)
+        _cover_picture(slide, photos[2]["blob"], right, 274320 + half + 182880, width - right - 274320, half)
+    # the small label on top, the hotels under it (the example had one hotel as the big burgundy line)
+    if 12 in ph:
+        ph[12].find('p:spPr/a:xfrm/a:off', _NS).set('y', '640080')
+        ph[12].find('p:spPr/a:xfrm/a:ext', _NS).set('cy', '420000')
+    if 11 in ph:
+        ph[11].find('p:spPr/a:xfrm/a:off', _NS).set('y', '1300000')
+        ph[11].find('p:spPr/a:xfrm/a:ext', _NS).set('cy', '4200000')
+        _set_lines(ph[11], [c["title"] for c in cards], size=20)
+        ph[11].find('p:txBody/a:bodyPr', _NS).set('anchor', 't')  # the list starts right under the label
+        ph[11].find('p:spPr/a:xfrm/a:off', _NS).set('y', '1250000')
+        for paragraph in ph[11].findall('p:txBody/a:p', _NS):
+            spacing = etree.SubElement(paragraph, _A + 'pPr') if paragraph.find('a:pPr', _NS) is None else paragraph.find('a:pPr', _NS)
+            if spacing.find('a:spcAft', _NS) is None:
+                after = etree.SubElement(spacing, _A + 'spcAft')
+                etree.SubElement(after, _A + 'spcPts', val='1800')
+            paragraph.remove(spacing)
+            paragraph.insert(0, spacing)
+
+
 def add_transport_slide(pasteIntoPres, outbound_date="", return_date=""):
     """Flight plan Paris - Marrakech, filled with what is known. Dates are "JJ.MM.AAAA" ("" = left blank)."""
     slide, ph = _copy_slide(_load(NEW_DA_FILE), DA_TRANSPORT_SLIDE, pasteIntoPres)

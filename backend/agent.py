@@ -11,6 +11,7 @@ import difflib
 import io
 import json
 import os
+import random
 import re
 import urllib.error
 import urllib.parse
@@ -25,7 +26,23 @@ SLOT_KEYS = ["breakfast", "morning", "lunch", "afternoon", "dinner"]
 SLOT_LABELS = {"breakfast": "petit-déjeuner", "morning": "matinée", "lunch": "déjeuner",
                "afternoon": "après-midi", "dinner": "dîner"}
 CHOICE_KINDS = {"hotels": "hôtels", "breakfasts": "petits-déjeuners", "meals": "restaurants et soirées",
-                "activities": "activités", "logo": "logo"}
+                "activities": "activités", "activities_morning": "activités du matin", "activities_afternoon": "activités de l'après-midi",
+                "logo": "logo"}
+TRANSFERS = ("ARRIVEE", "DEPART")  # names starting like this are transfers (DEPART, DEPART AEROPORT EN 4X4)
+
+
+def fits_slot(slot, name):
+    """A morning is not an afternoon: « APRES MIDI LIBRE » is never offered for the morning, « MATINEE LIBRE » never for the afternoon."""
+    name = name.upper()
+    if slot == "morning":
+        return not name.startswith("APRES MIDI")
+    if slot == "afternoon":
+        return not name.startswith("MATINEE")
+    return True
+
+
+def is_departure(name):
+    return str(name or "").upper().startswith("DEPART")
 CLEAR = "AUCUN"  # what the model writes to empty a cell
 
 _FORM_PROPERTIES = {
@@ -51,9 +68,9 @@ SCHEMA = {
     "type": "OBJECT",
     "properties": {"reply": {"type": "STRING"}, "done": {"type": "BOOLEAN"},
                    "showChoices": {"type": "STRING", "nullable": True,
-                                   "description": "hotels, breakfasts, meals, activities ou logo : affiche la liste cliquable (ou la zone de dépôt du logo) ; null sinon"},
+                                   "description": "hotels, breakfasts, meals, activities_morning, activities_afternoon ou logo : affiche la liste cliquable (ou la zone de dépôt du logo) ; null sinon"},
                    "offerChoices": {"type": "STRING", "nullable": True,
-                                    "description": "hotels, breakfasts, meals ou activities : ajoute un bouton « Voir les options » sous ta question ; null sinon"},
+                                    "description": "hotels, breakfasts, meals, activities_morning ou activities_afternoon : ajoute un bouton « Voir les options » sous ta question ; null sinon"},
                    **{key: {**value, "nullable": True} for key, value in _FORM_PROPERTIES.items()}},
     "required": ["reply", "done", "showChoices", "offerChoices", *_FORM_PROPERTIES],
 }
@@ -96,9 +113,16 @@ Programme d'un jour : 5 cases fixes, breakfast (petit-déjeuner), morning (matin
 - ACTIVITÉS ET TRANSFERTS (matinée, après-midi) : {" | ".join(names["activities"])}
 Si l'utilisateur demande quelque chose qui n'existe pas, propose l'option la plus proche de la liste. N'invente aucun nom. Pour vider une case, écris "{CLEAR}". Les notes manuelles (notes) sont des rappels libres : n'en ajoute que si on te le demande.
 
-Choix dans une liste (hôtel, petit-déjeuner, restaurant, activité) : n'écris JAMAIS la liste des noms dans reply, le site sait l'afficher joliment. Chaque fois que tu poses une question dont la réponse est un hôtel, un petit-déjeuner, un restaurant ou une activité, dis-le dans ta phrase (« tu as déjà une idée, ou tu veux voir les options ? ») et mets offerChoices à hotels, breakfasts, meals (déjeuner, dîner) ou activities (matinée, après-midi) : le site ajoute un bouton « Voir les options ». Quand la personne te demande les options, la liste, ce qui existe ou « propose-moi », mets showChoices au même type et réponds en une courte phrase (« Voici les hôtels, clique sur celui que tu veux »). Sinon showChoices et offerChoices restent null.
+Choix dans une liste (hôtel, petit-déjeuner, restaurant, activité) : n'écris JAMAIS la liste des noms dans reply, le site sait l'afficher joliment. Chaque fois que tu poses une question dont la réponse est un hôtel, un petit-déjeuner, un restaurant ou une activité, dis-le dans ta phrase (« tu as déjà une idée, ou tu veux voir les options ? ») et mets offerChoices à hotels, breakfasts, meals (déjeuner, dîner), activities_morning (matinée) ou activities_afternoon (après-midi) : le site ajoute un bouton « Voir les options ». Quand la personne te demande les options, la liste, ce qui existe ou « propose-moi », mets showChoices au même type et réponds en une courte phrase (« Voici les hôtels, clique sur celui que tu veux »). Sinon showChoices et offerChoices restent null.
 
 Logo : hasLogo dit si un logo est déjà ajouté. Quand le client, les dates, l'hôtel et le programme sont remplis, hasLogo est false et que tu n'as pas encore posé la question, demande si la personne a le logo du client et mets showChoices à logo (le site affiche une zone de dépôt, on peut aussi passer). Ne mets done à true qu'après avoir posé cette question.
+
+Règles du programme :
+- Une matinée n'est PAS un après-midi : pour la case morning n'utilise jamais un nom qui commence par « APRES MIDI », pour afternoon jamais un nom qui commence par « MATINEE ».
+- Jour d'arrivée (jour 1) : il n'y a presque jamais de petit-déjeuner. Laisse breakfast du jour 1 vide, et demande une fois « tu veux un petit-déjeuner le jour de l'arrivée ? » ; ne le remplis que si la personne dit oui.
+- Dernier jour : après le départ (un nom qui commence par DEPART), le programme s'arrête ; les cases suivantes du même jour restent vides. Ne mets jamais de dîner après un départ.
+- Quand on te demande de remplir vite, au hasard ou pour un test, propose un programme varié et agréable (activités, restaurants, soirées différents d'un jour à l'autre), pas seulement des repas à l'hôtel.
+- Plusieurs hôtels : après le premier hôtel, demande une fois s'il faut proposer un ou plusieurs autres hôtels (jusqu'à trois) ; la présentation ajoute alors une slide « PROPOSITIONS D'HEBERGEMENT ».
 
 N'invente jamais une information : ne remplis eventTitle que si on te le dit, et pour les chambres mets rooms à 0 puis demande le nombre : ne le déduis jamais du nombre de personnes. Un champ non mentionné reste null.
 
@@ -159,7 +183,7 @@ def clean_patch(raw, names):
                 continue
             hotels.append({"hotelName": name, "rooms": _int((item or {}).get("rooms"), 1, 2000) or 10})
         if hotels:
-            patch["hotels"] = hotels
+            patch["hotels"] = hotels[:3]  # up to three hotels can be proposed
     allowed = {
         "breakfast": names["breakfasts"] + names["activities"],
         "morning": names["activities"] + names["breakfasts"],
@@ -180,9 +204,10 @@ def clean_patch(raw, names):
             if value.strip().upper() == CLEAR:
                 entry["slots"][key] = ""
                 continue
-            name = _match(value, allowed[key])
+            name = _match(value, [o for o in allowed[key] if fits_slot(key, o)])
             if name is None:
-                rejected.append(value)
+                if _match(value, allowed[key]) is None:  # unknown name: tell the user; a name of the wrong half of the day is just dropped
+                    rejected.append(value)
             else:
                 entry["slots"][key] = name
         if isinstance(item.get("notes"), list):
@@ -236,6 +261,110 @@ def missing_fields(form):
     if not form.get("days"):
         missing.append("programme")
     return missing
+
+
+def wants_program(text):
+    """Does the message ask for the whole programme to be filled in (quickly, at random, for a test…)?"""
+    text = (text or "").lower()
+    if re.search(r"au hasard|al[ée]atoire|random|surprends|surprise|pour (un )?test|pour tester|for a test", text):
+        return True
+    return bool(re.search(r"remplis|rempli|compl[èe]te|g[ée]n[èe]re|fill|propose[- ]moi un programme", text)
+                and re.search(r"programme|tout|test|everything|\ball\b|program|jours?", text))
+
+
+def fun_program(names, form, rng=None, overwrite=False):
+    """A varied, pleasant programme for the empty cells: activities, restaurants and evenings that change every day.
+    Day 1: arrival and no breakfast. Last day: ends with the departure. Nothing after a departure.
+    With overwrite (« at random », « for a test ») the whole programme is redone, otherwise only the empty cells are filled."""
+    rng = rng or random.Random()
+    num_days = int(form.get("numDays") or len(form.get("days") or []) or 0)
+    if num_days < 1:
+        return []
+    boring = ("A L'HOTEL", "REUNION", "LIBRE", "A LA CARTE", "CHOIX")
+    activities = [n for n in names["activities"] if not n.upper().startswith(TRANSFERS) and not any(b in n.upper() for b in boring)]
+    morning = [n for n in activities if fits_slot("morning", n)]
+    afternoon = [n for n in activities if fits_slot("afternoon", n)]
+    meals = [n for n in names["meals"] if "A L'HOTEL" not in n.upper()]
+    evenings = [n for n in meals if n.upper().startswith("SOIREE")] or meals
+    lunches = [n for n in meals if not n.upper().startswith(("SOIREE", "AFTER", "CASINO", "LOTUS CLUB", "NOUBA"))] or meals
+    breakfasts = list(names["breakfasts"])
+    used = set()
+
+    def pick(pool):
+        fresh = [n for n in pool if n not in used] or pool
+        if not fresh:
+            return ""
+        choice = rng.choice(fresh)
+        used.add(choice)
+        return choice
+
+    arrival = next((n for n in names["activities"] if n.upper() == "ARRIVEE"), "")
+    departures = [n for n in names["activities"] if is_departure(n)]
+    days = form.get("days") or []
+    entries = []
+    for i in range(num_days):
+        first, last = i == 0, i == num_days - 1 and num_days > 1
+        wanted = {
+            "breakfast": "" if first else pick(breakfasts),
+            "morning": arrival if first else pick(morning),
+            "lunch": pick(lunches),
+            "afternoon": (rng.choice(departures) if departures else "") if last else pick(afternoon),
+            "dinner": "" if last else pick(evenings),
+        }
+        current = (days[i].get("slots") if i < len(days) else None) or ["", "", "", "", ""]
+        if overwrite:
+            slots = {key: (value or CLEAR) for key, value in wanted.items() if value != current[SLOT_KEYS.index(key)] and (value or current[SLOT_KEYS.index(key)])}
+        else:
+            slots = {key: value for key, value in wanted.items() if value and not current[SLOT_KEYS.index(key)]}
+        if slots:
+            entries.append({"day": i + 1, "slots": slots})
+    return entries
+
+
+def _cut_after_departure(merged, patch):
+    """Once a day has its departure, the rest of that day stays empty: add the clearing to the patch and to the merged form."""
+    fixes = {}
+    for number, day in enumerate(merged.get("days") or [], 1):
+        slots = list(day.get("slots") or [])
+        for k, name in enumerate(slots):
+            if is_departure(name):
+                fixes[number] = {SLOT_KEYS[later]: "" for later in range(k + 1, len(slots)) if slots[later]}
+                break
+    fixes = {number: slots for number, slots in fixes.items() if slots}
+    if not fixes:
+        return patch, merged
+    days = {entry["day"]: entry for entry in patch.get("days", [])}
+    merged = json.loads(json.dumps(merged))
+    for number, slots in fixes.items():
+        days.setdefault(number, {"day": number, "slots": {}})["slots"].update(slots)
+        for key, value in slots.items():
+            merged["days"][number - 1]["slots"][SLOT_KEYS.index(key)] = value
+    return {**patch, "days": sorted(days.values(), key=lambda e: e["day"])}, merged
+
+
+HOTEL_ASKED = re.compile(r"autres? h[ôo]tels?|deuxi[èe]me h[ôo]tel|plusieurs h[ôo]tels|second hotel|another hotel|other hotels?|more hotels|propos\w* un autre", re.I)
+BREAKFAST = re.compile(r"petit[- ]?d[ée]j|breakfast", re.I)
+ARRIVAL = re.compile(r"arriv|premier jour|jour 1|first day|day 1", re.I)
+
+
+def next_question(merged, turns, reply, still_missing, language):
+    """The questions the assistant must not forget, in order. Returns (text, choices) or None."""
+    said = " ".join(str(m["text"]) for m in turns if m["role"] == "model") + " " + reply
+    hotels = merged.get("hotels") or []
+    if len(hotels) == 1 and hotels[0].get("rooms") and not HOTEL_ASKED.search(said):
+        text = ("Do you want to propose another hotel as well (up to three)?" if language == "en"
+                else "Tu veux proposer un autre hôtel en plus (jusqu'à trois) ?")
+        return text, "hotels"
+    days = merged.get("days") or []
+    programme_filled = days and not any(m.startswith("programme") for m in still_missing)
+    user_said = " ".join(str(m["text"]) for m in turns if m["role"] == "user")
+    asked_breakfast = (BREAKFAST.search(said) and ARRIVAL.search(said)) or BREAKFAST.search(user_said) and ARRIVAL.search(user_said)
+    first_slots = (days[0].get("slots") if days else None) or []
+    if programme_filled and not asked_breakfast and not (first_slots and first_slots[0]):
+        text = ("Do you want a breakfast on the arrival day? (usually there isn't one)" if language == "en"
+                else "Tu veux un petit-déjeuner le jour de l'arrivée ? (en général il n'y en a pas)")
+        return text, "breakfasts"
+    return None
 
 
 def _call_once(body, api_key, model):
@@ -339,7 +468,22 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
             raise AgentError(502, "Réponse illisible de Gemini, réessaie ou reformule.")
         answer = {"reply": text.strip(), "done": False}
     patch, rejected = clean_patch(answer["form"] if isinstance(answer.get("form"), dict) else answer, names)
+    last_user = next((m["text"] for m in reversed(turns) if m["role"] == "user"), "").lower()
     merged = merge(form, patch)
+    if wants_program(last_user) and merged.get("numDays"):  # a quick fill is made by the server, so it is always varied
+        # compared with the form as it was before this turn (the model's own days are thrown away)
+        patch["days"] = fun_program(names, {"numDays": merged["numDays"], "days": form.get("days") or []}, rng=None, overwrite=bool(re.search(r"hasard|al[ée]atoire|random|surprends|surprise|test", last_user)))
+        merged = merge(form, patch)
+    first_day_breakfast = any(e["day"] == 1 and e["slots"].get("breakfast") for e in patch.get("days", []))
+    if first_day_breakfast and not (BREAKFAST.search(" ".join(str(m["text"]) for m in turns if m["role"] == "user"))):
+        for entry in patch["days"]:  # nobody asked for it: no breakfast on the arrival day
+            if entry["day"] == 1:
+                entry["slots"].pop("breakfast", None)
+        patch["days"] = [e for e in patch["days"] if e["slots"] or "notes" in e]
+        if not patch["days"]:
+            del patch["days"]
+        merged = merge(form, patch)
+    patch, merged = _cut_after_departure(merged, patch)
     still_missing = missing_fields(merged)
     reply = str(answer.get("reply") or "").strip() or "Je n'ai pas bien compris, tu peux reformuler ?"
     if rejected:
@@ -349,20 +493,29 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
         kind = str(answer.get(field) or "").strip().lower()
         if kind == "logo" and opened:
             choices = {"kind": "logo", "label": CHOICE_KINDS["logo"], "options": [], "open": True}
+        elif kind in ("activities_morning", "activities_afternoon"):
+            slot = kind.split("_")[1]
+            options = [n for n in names["activities"] if fits_slot(slot, n)]
+            choices = {"kind": kind, "label": CHOICE_KINDS[kind], "options": options, "open": opened}
         elif kind in CHOICE_KINDS and kind != "logo" and names.get(kind):
             choices = {"kind": kind, "label": CHOICE_KINDS[kind], "options": names[kind], "open": opened}
         if choices:
             break
     done = bool(answer.get("done")) and not still_missing
     # the logo drop zone must never depend on the model remembering to open it
-    last_user = next((m["text"] for m in reversed(turns) if m["role"] == "user"), "").lower()
+    pending = next_question(merged, turns, reply, still_missing, language) if not (choices and choices["kind"] == "logo") else None
+    if pending:
+        reply += " " + pending[0]
+        kind = pending[1]
+        choices = {"kind": kind, "label": CHOICE_KINDS[kind], "options": names[kind], "open": False}
+        done = False
     if not form.get("hasLogo") and "logo" not in last_user and (choices is None or choices["kind"] == "logo"):
         mentions = "logo" in reply.lower()
         asked_before = any("logo" in str(m["text"]).lower() for m in turns if m["role"] == "model")
         logo_choices = {"kind": "logo", "label": CHOICE_KINDS["logo"], "options": [], "open": True}
         if mentions and "?" in reply:
             choices = logo_choices
-        elif not still_missing and not mentions and not asked_before:
+        elif not still_missing and not mentions and not asked_before and not pending:
             reply += " Do you have the client's logo? You can drop it here." if language == "en" else " Tu as le logo du client ? Tu peux le déposer ici."
             choices, done = logo_choices, False
     if choices and choices["kind"] == "logo":

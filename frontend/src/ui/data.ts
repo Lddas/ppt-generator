@@ -59,6 +59,13 @@ export const SLOTS = [
   { key: 'dinner', label: 'Dîner', en: 'Dinner', icon: 'moon', groups: ['Restaurants et soirées', 'Activités'] },
 ] as const
 
+/** A morning is not an afternoon: « APRES MIDI … » is never offered for the morning, « MATINEE … » never for the afternoon. */
+export const fitsSlot = (slot: string, name: string) =>
+  slot === 'morning' ? !name.toUpperCase().startsWith('APRES MIDI') : slot === 'afternoon' ? !name.toUpperCase().startsWith('MATINEE') : true
+
+/** After a departure the day is over. */
+export const isDeparture = (name: string) => name.toUpperCase().startsWith('DEPART')
+
 export type HotelEntry = { hotelName: string; rooms: number }
 export type DayPlan = {
   dateOverride: string | null // null = computed from the start date
