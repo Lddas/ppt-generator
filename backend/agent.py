@@ -4,11 +4,14 @@ The Gemini key stays on the server (env GEMINI_API_KEY): the website code is pub
 The model answers with a JSON object: a reply to show, a patch of the form, and whether it is done.
 Everything it proposes is checked here against the real lists (hotels, restaurants, activities).
 """
+import base64
 import datetime
 import difflib
+import io
 import json
 import os
 import re
+import struct
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -256,7 +259,7 @@ def call_gemini(body, api_key, model):
     raise last
 
 
-def respond(messages, form, names, today=None, api_key=None, model=None, caller=call_gemini):
+def respond(messages, form, names, today=None, api_key=None, model=None, caller=call_gemini, language="fr"):
     """One turn of the conversation. messages: [{role: 'user'|'model', text}]."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -268,8 +271,11 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
     if not turns:
         raise AgentError(400, "Message vide.")
     form = form if isinstance(form, dict) else {}
+    prompt = system_prompt(names, form, missing_fields(form), today)
+    if language == "en":
+        prompt += "\n\nLANGUAGE: the user speaks English. Write `reply` in warm, short, natural English (the rules above still apply). Catalog names stay EXACTLY as listed (they are French proper names); never translate them in the form fields. Never set eventTitle unless the user gave an explicit title."
     body = {
-        "systemInstruction": {"parts": [{"text": system_prompt(names, form, missing_fields(form), today)}]},
+        "systemInstruction": {"parts": [{"text": prompt}]},
         "contents": [{"role": m["role"], "parts": [{"text": str(m["text"])[:2000]}]} for m in turns],
         "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json",
                              "responseSchema": SCHEMA, "maxOutputTokens": 1500,
@@ -309,3 +315,46 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
             break
     return {"reply": reply, "patch": patch, "done": bool(answer.get("done")) and not still_missing,
             "missing": still_missing, "choices": choices}
+
+
+TTS_MODELS = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-flash-tts-preview"]
+TTS_VOICE = "Kore"  # override with GEMINI_VOICE
+
+
+def _wav(pcm, rate=24000):
+    """Gemini sometimes answers raw 16-bit PCM: wrap it so every browser can play it."""
+    header = b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+    return header + b"data" + struct.pack("<I", len(pcm)) + pcm
+
+
+def speech(text, api_key=None, voice=None, caller=_call_once):
+    """Text to spoken French (Gemini TTS). Returns WAV bytes."""
+    api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        raise AgentError(503, "Clé Gemini manquante sur le serveur (GEMINI_API_KEY).")
+    text = re.sub(r"\s+", " ", str(text or "")).strip()[:700]
+    if not text:
+        raise AgentError(400, "Rien à dire.")
+    body = {
+        "contents": [{"parts": [{"text": text}]}],
+        "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {
+            "prebuiltVoiceConfig": {"voiceName": voice or os.environ.get("GEMINI_VOICE") or TTS_VOICE}}}},
+    }
+    last = AgentError(502, "La voix est indisponible pour le moment.")
+    for model in TTS_MODELS:
+        try:
+            answer = caller(body, api_key, model)
+            part = answer["candidates"][0]["content"]["parts"][0]["inlineData"]
+            audio = base64.b64decode(part["data"])
+            return audio if part.get("mimeType", "").startswith("audio/wav") else _wav(audio)
+        except urllib.error.HTTPError as error:
+            if error.code in (400, 403):
+                error.read()
+                last = AgentError(502, "La clé Gemini est refusée pour la voix.")
+            elif error.code not in (404, 429, 500, 503):
+                raise AgentError(502, f"La voix a répondu {error.code}.")
+        except (urllib.error.URLError, TimeoutError):
+            last = AgentError(504, "La voix ne répond pas.")
+        except (KeyError, IndexError, TypeError, ValueError):
+            pass  # no audio in the answer: try the next model
+    raise last

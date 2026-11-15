@@ -70,4 +70,20 @@ try:
     raise SystemExit("expected an error without key")
 except agent.AgentError as error:
     assert error.status == 503
+# the voice: WAV passes through, raw PCM gets a header, no audio tries the next model
+import base64
+wav = lambda mime, data: (lambda b, k, m: {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": mime, "data": base64.b64encode(data).decode()}}]}}]})
+assert agent.speech("Bonjour", api_key="k", caller=wav("audio/wav", b"RIFFxxxx"))== b"RIFFxxxx"
+out = agent.speech("Bonjour", api_key="k", caller=wav("audio/L16;codec=pcm;rate=24000", b"\0\0" * 10))
+assert out[:4] == b"RIFF" and out.endswith(b"\0\0" * 10)
+tried = []
+def flaky(b, k, m):
+    tried.append(m)
+    return {"candidates": [{"content": {"parts": [{"text": "pas d'audio"}]}}]} if len(tried) < 2 else wav("audio/wav", b"RIFF")(b, k, m)
+assert agent.speech("Bonjour", api_key="k", caller=flaky) == b"RIFF" and len(tried) == 2
+try:
+    agent.speech("  ", api_key="k", caller=flaky)
+    raise SystemExit("expected an error for empty text")
+except agent.AgentError as error:
+    assert error.status == 400
 print("test_agent: ok")

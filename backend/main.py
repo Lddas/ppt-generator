@@ -443,7 +443,28 @@ def agent(payload: dict, request: Request, x_app_password: str = Header(None)):
     calls.append(now)
     try:
         names = agent_module.catalog(load_index_json("."), ALLOWED_HOTELS)
-        return agent_module.respond(payload.get("messages") or [], payload.get("form") or {}, names)
+        return agent_module.respond(payload.get("messages") or [], payload.get("form") or {}, names,
+                                    language="en" if payload.get("language") == "en" else "fr")
+    except agent_module.AgentError as error:
+        raise HTTPException(status_code=error.status, detail=error.message)
+
+
+_speech_calls = defaultdict(deque)
+
+
+@app.post("/speak")
+def speak(payload: dict, request: Request, x_app_password: str = Header(None)):
+    """The assistant's voice (Gemini TTS) as a WAV file."""
+    require_password(request, x_app_password)
+    calls = _speech_calls[_visitor(request)]
+    now = time.time()
+    while calls and now - calls[0] > 600:
+        calls.popleft()
+    if len(calls) >= 120:
+        raise HTTPException(status_code=429, detail="Trop de messages vocaux, réessaie dans quelques minutes.")
+    calls.append(now)
+    try:
+        return Response(content=agent_module.speech(payload.get("text")), media_type="audio/wav")
     except agent_module.AgentError as error:
         raise HTTPException(status_code=error.status, detail=error.message)
 
