@@ -21,6 +21,10 @@ def turn(answer, form=None):
 assert "BARCELO PALMERAIE" in NAMES["hotels"] and "PETIT DEJEUNER BERBERE" in NAMES["breakfasts"]
 assert "QUAD" in NAMES["activities"] and "DAR CHERIFA" in NAMES["meals"]
 
+# entries of index.json without data (section titles, the bare "PETIT DEJEUNER") are never offered
+assert "PETIT DEJEUNER" not in NAMES["breakfasts"] and "REPAS" not in NAMES["meals"] and "HOTELS" not in NAMES["hotels"]
+assert all(json.load(open("index.json", encoding="utf-8")).get(n, {}).get("ppt") for k in ("breakfasts", "meals", "activities") for n in NAMES[k])
+
 # a valid patch is kept, names are normalised, unknown ones are rejected and reported
 r = turn({"reply": "Noté !", "done": False, "form": {
     "client": " HOYA ", "startDate": "2026-11-21", "numDays": 3, "numPeople": 40,

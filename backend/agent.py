@@ -71,6 +71,8 @@ def catalog(index, hotels):
     names = {"hotels": sorted(hotels), "breakfasts": [], "meals": [], "activities": []}
     for name, entry in index.items():
         ppt = entry.get("ppt")
+        if not ppt or (ppt != "FALSE" and "index" not in entry):
+            continue  # a placeholder or section title in index.json (e.g. "PETIT DEJEUNER" alone): the generator has nothing to build from it
         if name.startswith("PETIT DEJEUNER"):
             names["breakfasts"].append(name)
         elif ppt == "liste_REPAS.pptx":
