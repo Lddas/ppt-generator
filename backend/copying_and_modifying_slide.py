@@ -400,9 +400,67 @@ def NewSlide(index, link, outputPres):
     """Copy slide `index` (0-based) of the template deck `link` into outputPres.
     Uses the small per-entry deck made by build_slices.py when it exists, else the big deck."""
     path, position = _slices().get((link, index), (None, None))
+    if path and not os.path.exists(path):  # slices added after the Dropbox bundle was made live in extra_slices/
+        path = os.path.join("extra_slices", os.path.basename(path))
     if path and os.path.exists(path):
-        return CopySlide(_load(path), position, outputPres)
-    return CopySlide(_load(link), index, outputPres)
+        slide = CopySlide(_load(path), position, outputPres)
+    else:
+        slide = CopySlide(_load(link), index, outputPres)
+    if path and os.path.basename(path) == FREE_TIME_SLICE:
+        _crop_free_time_photo(slide)
+    _apply_renames(slide)
+    return slide
+
+
+# Wording asked by the client: the restaurant of the Palais Ronsard is no longer « LE VERGER ».
+RENAMES = [(r"Le restaurant Le Verger se situe dans les jardins du\s+Palais Ronsard, un hôtel 5\*", "Le restaurant du Palais Ronsard, hôtel 5*, se situe dans ses jardins"), ("RESTAURANT PALAIS RONSARD LE VERGER", "PALAIS RONSARD"), ("SOULEIMAN", "SOLEIMAN")]
+
+
+def _apply_renames(slide):
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        paragraphs = shape.text_frame.paragraphs
+        for paragraph in list(paragraphs):
+            text = "".join(r.text for r in paragraph.runs)
+            if text.strip().upper() == "LE VERGER":  # sub-title line under the restaurant name
+                paragraph._p.getparent().remove(paragraph._p)
+            elif text.strip().upper() == "RESTAURANT PALAIS RONSARD":
+                paragraph.runs[0].text = "PALAIS RONSARD"
+                for run in paragraph.runs[1:]:
+                    run.text = ""
+            else:
+                for old, new in RENAMES:
+                    if re.search(old, text, re.I) and paragraph.runs:
+                        paragraph.runs[0].text = re.sub(old, new, text, flags=re.I)
+                        for run in paragraph.runs[1:]:
+                            run.text = ""
+                        break
+
+
+def set_theme_fonts(pres, major="LEMON MILK Bold", minor="Futura BT"):
+    """python-pptx's blank deck has a Calibri theme, so any text without its own font (titles, boxes)
+    came out in Calibri. Give it the house theme fonts, as in the design files."""
+    for master in pres.slide_masters:
+        for rel in master.part.rels.values():
+            if rel.reltype.endswith("/theme"):
+                part = rel.target_part
+                xml = part.blob.decode("utf-8")
+                xml = re.sub(r'(<a:majorFont>\s*<a:latin typeface=")[^"]*', lambda m: m.group(1) + major, xml, count=1)
+                xml = re.sub(r'(<a:minorFont>\s*<a:latin typeface=")[^"]*', lambda m: m.group(1) + minor, xml, count=1)
+                part._blob = xml.encode("utf-8")
+
+
+# « MATINEE LIBRE » / « APRES MIDI LIBRE » share one photo-only slide: the Majorelle entrance, whose
+# sign reads « MUSÉE BERBÈRE ». Crop the sign out so the slide does not suggest a museum visit.
+FREE_TIME_SLICE = "liste_ACTIVITES__80_1.pptx"
+
+
+def _crop_free_time_photo(slide):
+    for shape in slide.shapes:
+        if shape.shape_type == 13:  # picture
+            shape.crop_left, shape.crop_right = 0.0516, 0.3119
+            shape.crop_top, shape.crop_bottom = 0.3552, 0.0067
 
 
 def set_room_count(slide, rooms):
@@ -438,6 +496,19 @@ def add_room_count_line(slide, rooms):
     paragraph.runs[0].text = f"Vous aurez à votre disposition {_plural(rooms, 'chambre')}."
 
 
+def _own_photo(entry):
+    """A picture taken from the entry's own slides (the first .jpg-sized one after the cover)."""
+    path, _ = _slices()[(entry["ppt"], entry["index"] - 1)]
+    if not os.path.exists(path):
+        path = os.path.join("extra_slices", os.path.basename(path))
+    pres = _load(path)
+    for slide in list(pres.slides)[1:]:
+        pics = [sh for sh in slide.shapes if sh.shape_type == 13 and sh.image.ext in ("jpg", "jpeg")]
+        if pics:
+            return max(pics, key=lambda sh: sh.width * sh.height).image.blob
+    raise ValueError("no photo found for the thumbnail")
+
+
 def select_image_from_index(activity_label):
     """
     Selects an image from the reference PowerPoint based on the activity_label.
@@ -447,6 +518,8 @@ def select_image_from_index(activity_label):
     if activity_label not in data:
         raise ValueError(f"Activity '{activity_label}' not found in the image index map")
 
+    if "image" not in data[activity_label]:  # new entries: first photo of their own slides
+        return _own_photo(data[activity_label])
     slide_number = data[activity_label]["image"][0]  # Get slide number from the index
     image_index = data[activity_label]["image"][1]  # Get the image index for that activity
 

@@ -511,7 +511,7 @@
         "nb_slides": 7,
         "image" : [11, 8]
     },
-    "VERGER PALAIS RONSARD": {
+    "RESTAURANT PALAIS RONSARD": {
         "ppt": "liste_REPAS.pptx",
         "index": 137,
         "nb_slides": 5,
@@ -580,6 +580,10 @@
         "index": 2,
         "nb_slides": 1,
         "image" : [8, 8]
+    },
+    "PALAIS SOLEIMAN": {
+        "ppt": "liste_REPAS.pptx",
+        "index": 196,
+        "nb_slides": 4
     }
-
 }

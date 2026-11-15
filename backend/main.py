@@ -155,6 +155,7 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         # Same size as the PRESENTATION_MARRAKECH design file (16:9)
         output_pres.slide_width = 12192000
         output_pres.slide_height = 6858000
+        gen.set_theme_fonts(output_pres)
         
         # Force garbage collection after setup
         gc.collect()
