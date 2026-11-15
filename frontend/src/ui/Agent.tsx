@@ -164,7 +164,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
     const said = [...new Set(words(spoken))]
     const known = (w: string) => said.some(s => s === w || (s.length > 3 && w.length > 3 && s.slice(0, 4) === w.slice(0, 4)))
     const mine = words(heard)
-    return mine.some(w => STOP_WORDS.has(w)) || mine.filter(w => w.length > 2 && !known(w)).length >= 2
+    return mine.some(w => STOP_WORDS.has(w) || (w.length > 1 && !known(w))) // any word that is not the assistant's own cuts in
   }
 
   /** The person talks over the assistant (voice, tap on the orb, space bar): it stops and the listening goes on. */
