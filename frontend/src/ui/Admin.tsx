@@ -105,10 +105,10 @@ export default function Admin({ apiUrl, onBack }: { apiUrl: string; onBack: () =
   return shell(
     <div className="space-y-5">
       {!stats.persistent && (
-        <div role="alert" className="rounded-[12px] border border-[#e8c3be] bg-[#fbeceb] p-4 text-sm text-[var(--danger)]">
-          {t('Les données ne sont pas conservées : elles sont effacées à chaque déploiement ou redémarrage. Ajoute un Disk sur Render (point de montage /data) pour les garder.',
-             'Data is not kept: it is wiped on every deploy or restart. Add a Disk on Render (mount path /data) to keep it.')}
-        </div>
+        <p className="text-xs text-[var(--muted)]">
+          {t('Compteurs depuis le dernier démarrage du serveur (remis à zéro à chaque déploiement ou redémarrage).',
+             'Counters since the server last started (reset on every deploy or restart).')}
+        </p>
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
