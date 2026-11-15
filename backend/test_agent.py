@@ -219,4 +219,8 @@ try:
     raise SystemExit("expected an error when every voice model is down")
 except agent.AgentError as error:
     assert error.status == 504
+# several departure cities: cleaned, deduplicated, capped at 5, merged into the form
+patch, _ = agent.clean_patch({"departureCities": " Paris,lyon ;PARIS\nNantes, A, B, C"}, NAMES)
+assert patch["departureCities"] == "Paris, lyon, Nantes, A, B", patch
+assert agent.merge({}, patch)["departureCities"] == patch["departureCities"]
 print("test_agent: ok")

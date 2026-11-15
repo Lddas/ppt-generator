@@ -135,7 +135,7 @@ export const SLOT_KEYS = ['breakfast', 'morning', 'lunch', 'afternoon', 'dinner'
 /** The form after applying what the assistant understood (already checked by the server). */
 export function applyPatch(form: Form, patch: any): Form {
   const next: Form = { ...form }
-  for (const key of ['client', 'eventTitle', 'numDays', 'numNights', 'numPeople'] as const) {
+  for (const key of ['client', 'eventTitle', 'numDays', 'numNights', 'numPeople', 'departureCities'] as const) {
     if (patch[key] !== undefined) (next as any)[key] = patch[key]
   }
   if (patch.startDate !== undefined) {

@@ -52,6 +52,7 @@ _FORM_PROPERTIES = {
     "numDays": {"type": "INTEGER"},
     "numNights": {"type": "INTEGER"},
     "numPeople": {"type": "INTEGER"},
+    "departureCities": {"type": "STRING", "description": "villes de départ des vols, séparées par des virgules (2 à 5 ajoutent les plans de vol aller et retour), \"\" pour effacer, null si inchangé"},
     "hotels": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
         "hotelName": {"type": "STRING"},
         "rooms": {"type": "INTEGER", "description": "0 tant que l'utilisateur n'a pas donné le nombre de chambres"}}}},
@@ -124,11 +125,12 @@ Règles du programme :
 - Quand on te demande de remplir vite, au hasard ou pour un test, propose un programme varié et agréable (activités, restaurants, soirées différents d'un jour à l'autre), pas seulement des repas à l'hôtel.
 - Plusieurs hôtels : après le premier hôtel, demande une fois s'il faut proposer un ou plusieurs autres hôtels (jusqu'à trois) ; la présentation ajoute alors une slide « PROPOSITIONS D'HEBERGEMENT ».
 
+Vols : si on te dit que des participants partent de plusieurs villes (Paris, Lyon, Nantes…), mets-les dans departureCities (2 à 5 villes, séparées par des virgules) : cela ajoute les slides de plans de vol aller et retour. Ne pose pas la question de toi-même, c'est facultatif.
 N'invente jamais une information : ne remplis eventTitle que si on te le dit, et pour les chambres mets rooms à 0 puis demande le nombre : ne le déduis jamais du nombre de personnes. Un champ non mentionné reste null.
 
 À chaque réponse :
 - reply : ce que tu dis à l'utilisateur (confirme brièvement ce que tu viens de noter, puis pose la prochaine question).
-- les autres champs (client, startDate, numDays, numNights, numPeople, hotels, days) : seulement ce qui change, directement à la racine du JSON (pour hotels, la liste complète des hôtels ; pour days, uniquement les jours et cases modifiés, day commence à 1).
+- les autres champs (client, startDate, numDays, numNights, numPeople, departureCities, hotels, days) : seulement ce qui change, directement à la racine du JSON (pour hotels, la liste complète des hôtels ; pour days, uniquement les jours et cases modifiés, day commence à 1).
 - done : true seulement quand tout l'essentiel est rempli ET que tu as récapitulé en une phrase en demandant s'il faut ajuster quelque chose ; sinon false.
 
 État actuel du formulaire : {json.dumps(form, ensure_ascii=False)}
@@ -174,6 +176,13 @@ def clean_patch(raw, names):
         number = _int(raw.get(key), low, high)
         if number is not None:
             patch[key] = number
+    if isinstance(raw.get("departureCities"), str):
+        cities = []
+        for city in re.split(r"[,;\n]+", raw["departureCities"]):
+            city = city.strip()
+            if city and city.lower() not in [c.lower() for c in cities]:
+                cities.append(city)
+        patch["departureCities"] = ", ".join(cities[:5])
     if isinstance(raw.get("hotels"), list):
         hotels = []
         for item in raw["hotels"]:
@@ -222,7 +231,7 @@ def clean_patch(raw, names):
 def merge(form, patch):
     """The form after applying the patch (same shape as the website's form)."""
     merged = json.loads(json.dumps(form or {}))
-    for key in ("client", "eventTitle", "startDate", "numDays", "numNights", "numPeople", "hotels"):
+    for key in ("client", "eventTitle", "startDate", "numDays", "numNights", "numPeople", "departureCities", "hotels"):
         if key in patch:
             merged[key] = patch[key]
     days = merged.setdefault("days", [])
