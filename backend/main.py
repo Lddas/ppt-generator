@@ -229,7 +229,11 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
 
         # Slide for flights (form to complete by hand)
         outbound, inbound = _flight_dates(payload.get("start_date"), int(payload.get("num_days") or 1))
-        gen.add_transport_slide(output_pres, outbound, inbound)
+        cities = payload.get("departure_cities") or []
+        if len(cities) >= 2:
+            gen.add_multi_flight_slides(output_pres, cities, outbound, inbound)
+        else:
+            gen.add_transport_slide(output_pres, outbound, inbound)
 
         # Manual notes slides (before day activities)
         for day_index, day_data in enumerate(payload.get("dayPlans", [])):
@@ -329,6 +333,7 @@ async def generate(
     numPeople: int = Form(...),
     hotels: str = Form("[]"),  # JSON string
     dayPlans: str = Form("[]"),  # JSON string
+    departureCities: str = Form(""),  # "Paris, Lyon": several flight plans
     logo: UploadFile = File(None),
 ):
     require_password(request, x_app_password)
@@ -368,6 +373,7 @@ async def generate(
         "hotels": hotels_list,
         "dayPlans": plans_list,
         "logo_path": logo_path,
+        "departure_cities": gen.parse_cities(departureCities),
     }
 
     try:

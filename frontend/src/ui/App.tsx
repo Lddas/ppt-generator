@@ -253,6 +253,11 @@ function StepEvent({ form, set, nights, datesText, logoFile, logoPreview, onLogo
         <Counter id="people" value={form.numPeople} min={1} label={t('personnes', 'people')} onChange={n => set({ numPeople: n })} />
       </Field>
 
+      <Field label={t('Villes de départ des vols', 'Departure cities')} htmlFor="cities" hint={t('Facultatif. Plusieurs villes (jusqu’à 5, séparées par des virgules) ajoutent les plans de vol aller et retour.', 'Optional. Several cities (up to 5, comma-separated) add the outbound and return flight plans.')}>
+        <input id="cities" className="field" value={form.departureCities} placeholder={t('Ex : Paris, Lyon, Nantes', 'E.g. Paris, Lyon, Nantes')}
+          onChange={e => set({ departureCities: e.target.value })} />
+      </Field>
+
       <div>
         <span className="label">{t('Logo du client', 'Client logo')} <span className="normal-case tracking-normal font-normal">({t('facultatif', 'optional')})</span></span>
         {logoPreview ? (
@@ -639,6 +644,7 @@ function AppInner() {
       fd.append('numDays', String(form.numDays))
       fd.append('numNights', String(nights))
       fd.append('numPeople', String(form.numPeople))
+      fd.append('departureCities', form.departureCities)
       fd.append('hotels', JSON.stringify(form.hotels))
       fd.append('dayPlans', JSON.stringify(form.days.map((d, i) => ({
         date: d.dateOverride ?? dayLabel(form.startDate, i),

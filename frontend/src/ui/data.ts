@@ -111,6 +111,7 @@ export type Form = {
   numDays: number
   numNights: number | null
   numPeople: number
+  departureCities: string
   hotels: HotelEntry[]
   days: DayPlan[]
 }
@@ -123,6 +124,7 @@ export const initialForm = (): Form => ({
   numDays: 3,
   numNights: null,
   numPeople: 20,
+  departureCities: '',
   hotels: [],
   days: [emptyDay(), emptyDay(), emptyDay()],
 })
