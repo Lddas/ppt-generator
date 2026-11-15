@@ -647,6 +647,7 @@ export default function App() {
           password={getPassword()}
           onManual={() => setMode('form')}
           onReview={() => { setMaxReached(3); setMode('recap'); window.scrollTo({ top: 0 }) }}
+          onReset={() => { if (confirm('Effacer la conversation et le formulaire, et recommencer ?')) reset() }}
           summary={summary}
         />
       ) : mode === 'recap' ? (
@@ -663,6 +664,10 @@ export default function App() {
       <div className="mx-auto grid max-w-[1400px] gap-6 px-5 py-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[12rem_minmax(0,1fr)_19rem]">
         <div className="lg:sticky lg:top-28 lg:self-start">
           <Stepper current={step} maxReached={maxReached} goTo={goTo} />
+          <button type="button" className="btn btn-quiet mt-4 !text-[var(--muted)]"
+            onClick={() => { if (confirm('Effacer le formulaire et recommencer ?')) reset() }}>
+            <Icon name="refresh" className="w-4 h-4" /> Recommencer
+          </button>
         </div>
 
         <main>
