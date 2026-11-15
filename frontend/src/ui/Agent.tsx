@@ -31,15 +31,20 @@ const SpeechRecognitionApi: any =
   typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : undefined
 
 /** What the assistant needs to know of the form: no files, no UI state. */
-const forAgent = (form: Form, hasLogo: boolean) => ({
+const forAgent = (form: Form, hasLogo: boolean, known: Set<string>) => ({
   hasLogo,
-  client: form.client, eventTitle: form.eventTitle, startDate: form.startDate,
-  numDays: form.numDays, numNights: form.numNights, numPeople: form.numPeople,
+  client: form.client, eventTitle: form.eventTitle,
+  // what was never given stays null: the assistant must ask for it instead of trusting the form's defaults
+  startDate: known.has('startDate') ? form.startDate : null,
+  numDays: known.has('numDays') ? form.numDays : null,
+  numNights: known.has('numNights') ? form.numNights : null,
+  numPeople: known.has('numPeople') ? form.numPeople : null,
   hotels: form.hotels, days: form.days.map(d => ({ slots: d.slots, notes: d.notes })),
 })
 
-export default function AgentScreen({ form, onPatch, messages, setMessages, apiUrl, password, onManual, onReview, onReset, logoFile, onLogo, onLogoClear, summary }: {
+export default function AgentScreen({ form, known, onPatch, messages, setMessages, apiUrl, password, onManual, onReview, onReset, logoFile, onLogo, onLogoClear, summary }: {
   form: Form
+  known: Set<string>
   onPatch: (patch: any) => void
   messages: ChatMessage[]
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
@@ -116,7 +121,7 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
         headers: { 'Content-Type': 'application/json', 'X-App-Password': password },
         body: JSON.stringify({
           messages: history.filter(m => m.role !== 'error').map(m => ({ role: m.role, text: m.text })),
-          form: forAgent(form, !!logoFile),
+          form: forAgent(form, !!logoFile, known),
           language: lang,
         }),
       })
