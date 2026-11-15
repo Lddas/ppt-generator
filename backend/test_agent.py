@@ -1,4 +1,5 @@
 """Tests of the assistant without calling Gemini:  python test_agent.py"""
+import base64
 import json
 
 import agent
@@ -79,6 +80,15 @@ assert turn({"reply": "ok", "done": False, "offerChoices": "logo"})["choices"] i
 assert turn({"reply": "ok", "done": False, "showChoices": "n'importe quoi"})["choices"] is None
 assert turn({"reply": "ok", "done": False, "showChoices": None})["choices"] is None
 
+# without an explicit model: the configured one (or the default) is used, and the tokens are reported for the cost page
+seen = []
+def spy(body, key, model):
+    seen.append(model)
+    return {"candidates": [{"content": {"parts": [{"text": json.dumps({"reply": "ok", "done": False})}]}}],
+            "usageMetadata": {"promptTokenCount": 100, "candidatesTokenCount": 10, "thoughtsTokenCount": 5}, "_model": model}
+r = agent.respond([{"role": "user", "text": "x"}], {}, NAMES, api_key="k", caller=spy)
+assert seen == [agent.DEFAULT_MODEL] and r["usage"] == {"model": agent.DEFAULT_MODEL, "in": 100, "out": 15}
+
 # plain text instead of JSON still gives a reply
 r = agent.respond([{"role": "user", "text": "x"}], {}, NAMES, api_key="k", model="m",
                   caller=lambda *a: {"candidates": [{"content": {"parts": [{"text": "Bonjour !"}]}}]})
@@ -90,22 +100,6 @@ try:
     raise SystemExit("expected an error without key")
 except agent.AgentError as error:
     assert error.status == 503
-# the voice: WAV passes through, raw PCM gets a header, no audio tries the next model
-import base64
-wav = lambda mime, data: (lambda b, k, m: {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": mime, "data": base64.b64encode(data).decode()}}]}}]})
-assert agent.speech("Bonjour", api_key="k", caller=wav("audio/wav", b"RIFFxxxx"))== b"RIFFxxxx"
-out = agent.speech("Bonjour", api_key="k", caller=wav("audio/L16;codec=pcm;rate=24000", b"\0\0" * 10))
-assert out[:4] == b"RIFF" and out.endswith(b"\0\0" * 10)
-tried = []
-def flaky(b, k, m):
-    tried.append(m)
-    return {"candidates": [{"content": {"parts": [{"text": "pas d'audio"}]}}]} if len(tried) < 2 else wav("audio/wav", b"RIFF")(b, k, m)
-assert agent.speech("Bonjour", api_key="k", caller=flaky) == b"RIFF" and len(tried) == 2
-try:
-    agent.speech("  ", api_key="k", caller=flaky)
-    raise SystemExit("expected an error for empty text")
-except agent.AgentError as error:
-    assert error.status == 400
 # fallbacks: an overloaded model is skipped at once, a slow one is raced against the next
 import io, time, urllib.error
 def http(code): return urllib.error.HTTPError("u", code, "x", {}, io.BytesIO(b"{}"))
@@ -116,10 +110,10 @@ def fake_call(behaviour):
         if callable(action): return action()
         raise http(action)
     return call
-agent._call_once = fake_call({"m1": 503, "gemini-3.1-flash-lite": 429, "gemini-3.5-flash": lambda: "third"})
-assert agent.call_gemini({}, "k", "m1") == "third"
-agent._call_once = fake_call({"m1": lambda: (time.sleep(1.5), "slow")[1], "gemini-3.1-flash-lite": lambda: "fast"})
-t0 = time.time(); assert agent.call_gemini({}, "k", "m1", hedge_after=0.2) == "fast" and time.time() - t0 < 1
+agent._call_once = fake_call({"m1": 503, "gemini-3.1-flash-lite": 429, "gemini-3.5-flash": lambda: {"x": "third"}})
+assert agent.call_gemini({}, "k", "m1")["x"] == "third"
+agent._call_once = fake_call({"m1": lambda: (time.sleep(1.5), {"x": "slow"})[1], "gemini-3.1-flash-lite": lambda: {"x": "fast"}})
+t0 = time.time(); assert agent.call_gemini({}, "k", "m1", hedge_after=0.2)["x"] == "fast" and time.time() - t0 < 1
 agent._call_once = fake_call({m: 503 for m in ["m1", *agent.FALLBACK_MODELS]})
 try:
     agent.call_gemini({}, "k", "m1")

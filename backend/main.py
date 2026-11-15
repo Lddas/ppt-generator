@@ -22,6 +22,7 @@ import time
 from collections import defaultdict, deque
 
 import agent as agent_module
+import usage
 
 
 ALLOWED_HOTELS = {
@@ -430,6 +431,45 @@ def login(request: Request, x_app_password: str = Header(None)):
     return {"ok": True}
 
 
+_failed_admin = defaultdict(deque)
+
+
+def require_admin(request: Request, given: str = None):
+    """The admin page: a second code (env ADMIN_CODE), separate from the site password."""
+    expected = os.environ.get("ADMIN_CODE")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Code admin non configuré sur le serveur (ADMIN_CODE).")
+    visitor, now = _visitor(request), time.time()
+    failures = _failed_admin[visitor]
+    while failures and now - failures[0] > 600:
+        failures.popleft()
+    if len(failures) >= 8:
+        raise HTTPException(status_code=429, detail="Trop d'essais, réessaie dans quelques minutes.")
+    if not hmac.compare_digest((given or "").encode("utf-8"), expected.encode("utf-8")):
+        failures.append(now)
+        raise HTTPException(status_code=401, detail="Code admin incorrect.")
+
+
+@app.post("/admin/login")
+def admin_login(request: Request, x_admin_code: str = Header(None)):
+    require_admin(request, x_admin_code)
+    return {"ok": True}
+
+
+@app.get("/admin/stats")
+def admin_stats(request: Request, x_admin_code: str = Header(None)):
+    require_admin(request, x_admin_code)
+    return usage.stats()
+
+
+@app.post("/admin/config")
+def admin_config(payload: dict, request: Request, x_admin_code: str = Header(None)):
+    """Model, voice and prices, changed from the admin page (the API key stays on Render)."""
+    require_admin(request, x_admin_code)
+    usage.set_config(payload)
+    return usage.stats()
+
+
 @app.post("/agent")
 def agent(payload: dict, request: Request, x_app_password: str = Header(None)):
     """One turn with the form-filling assistant (Gemini Flash). The key never leaves the server."""
@@ -444,9 +484,13 @@ def agent(payload: dict, request: Request, x_app_password: str = Header(None)):
     calls.append(now)
     try:
         names = agent_module.catalog(load_index_json("."), ALLOWED_HOTELS)
-        return agent_module.respond(payload.get("messages") or [], payload.get("form") or {}, names,
+        result = agent_module.respond(payload.get("messages") or [], payload.get("form") or {}, names,
                                     language="en" if payload.get("language") == "en" else "fr",
                                     voice=bool(payload.get("voice")))
+        used = result.pop("usage", None)  # for the cost page, not for the website
+        if used:
+            usage.record("text", used["model"], used["in"], used["out"])
+        return result
     except agent_module.AgentError as error:
         raise HTTPException(status_code=error.status, detail=error.message)
 
@@ -466,21 +510,32 @@ def speak(payload: dict, request: Request, x_app_password: str = Header(None)):
         raise HTTPException(status_code=429, detail="Trop de messages vocaux, réessaie dans quelques minutes.")
     calls.append(now)
     try:
-        stream = agent_module.speech_stream(payload.get("text"))
+        info = {}
+        stream = agent_module.speech_stream(payload.get("text"), info=info)
         first = next(stream)  # a failure before the first sound is still a proper HTTP error
     except agent_module.AgentError as error:
         raise HTTPException(status_code=error.status, detail=error.message)
     except StopIteration:
         raise HTTPException(status_code=502, detail="La voix est indisponible pour le moment.")
-    return StreamingResponse(itertools.chain([first], stream), media_type="audio/L16; rate=24000; channels=1")
+    def spoken():
+        try:
+            yield first
+            yield from stream
+        finally:  # whatever happened (finished, or cut by an interruption), Google bills what it produced
+            if info.get("model"):
+                seconds = info.get("bytes", 0) / 2 / 24000
+                usage.record("voice", info["model"], info.get("tokens_in") or max(1, info.get("chars", 0) // 4),
+                             info.get("tokens_out") or round(seconds * usage.AUDIO_TOKENS_PER_SECOND))
+
+    return StreamingResponse(spoken(), media_type="audio/L16; rate=24000; channels=1")
 
 
 @app.get("/")
 async def root():
     """Health check; also tells which version and model are live (handy to check a deploy)."""
     return {"status": "ok", "commit": (os.environ.get("RENDER_GIT_COMMIT") or "")[:7],
-            "model": os.environ.get("GEMINI_MODEL") or agent_module.DEFAULT_MODEL,
-            "voice": os.environ.get("GEMINI_VOICE") or agent_module.TTS_VOICE}
+            "model": usage.get_config().get("model") or os.environ.get("GEMINI_MODEL") or agent_module.DEFAULT_MODEL,
+            "voice": usage.get_config().get("voice") or os.environ.get("GEMINI_VOICE") or agent_module.TTS_VOICE}
 
 @app.get("/debug")
 async def debug():
