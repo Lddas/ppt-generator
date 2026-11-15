@@ -7,6 +7,7 @@ import re
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from lxml import etree
 import copy
+import datetime
 import os
 import inputs
 DIR_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -612,7 +613,80 @@ def _add_cover_logo(slide):
     slide.shapes.add_picture(path, int(left + pad), int(top + (card_h - height) / 2), int(width), int(height))
 
 
-def add_intro_slides(pasteIntoPres):
+MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+# Marrakech, average low / high in °C by month
+MARRAKECH_TEMPERATURES = [(6, 18), (8, 20), (10, 23), (12, 26), (15, 29), (18, 33), (21, 38), (21, 38), (18, 33), (14, 28), (10, 23), (7, 19)]
+RAMADAN = {2026: ((2, 18), (3, 19)), 2027: ((2, 8), (3, 9))}  # Morocco goes back to UTC+0 during Ramadan
+
+
+def _paris_summer_time(day):
+    """Paris is on summer time from the last Sunday of March to the last Sunday of October."""
+    def last_sunday(month):
+        d = datetime.date(day.year, month, 31)
+        return d - datetime.timedelta(days=(d.weekday() + 1) % 7)
+    return last_sunday(3) <= day < last_sunday(10)
+
+
+def _practical_info(start_iso):
+    """The texts of the "practical information" slide for the month of the stay (None when the date is unknown)."""
+    try:
+        day = datetime.date.fromisoformat(start_iso or "")
+    except ValueError:
+        return None
+    low, high = MARRAKECH_TEMPERATURES[day.month - 1]
+    ramadan = RAMADAN.get(day.year)
+    utc = 0 if ramadan and datetime.date(day.year, *ramadan[0]) <= day <= datetime.date(day.year, *ramadan[1]) else 1
+    paris = 2 if _paris_summer_time(day) else 1
+    gap = paris - utc
+    return {
+        "month": MONTHS_FR[day.month - 1],
+        "temperature": f"Température moyenne en {MONTHS_FR[day.month - 1]} à Marrakech : de {low}° la nuit à {high}° la journée.",
+        "utc": f"UTC +{utc}",
+        "time": f"Quand il est 12h à Paris, il est {12 - gap}h à Marrakech." if gap else "Quand il est 12h à Paris, il est 12h à Marrakech.",
+    }
+
+
+def _replace_text(el, old, new):
+    """Replace text inside a placeholder, run by run, so its formatting is kept."""
+    for t in el.iter(_A + 't'):
+        if t.text and old in t.text:
+            t.text = t.text.replace(old, new)
+
+
+def _copy_style(target, like):
+    """Give `target` the paragraph and font settings of a sibling placeholder (their layout font differs from the typed one)."""
+    like_p = like.find('p:txBody/a:p', _NS)
+    like_r = like_p.find('a:r/a:rPr', _NS) if like_p is not None else None
+    p = target.find('p:txBody/a:p', _NS)
+    if like_p is not None and like_p.find('a:pPr', _NS) is not None:
+        for old in p.findall('a:pPr', _NS):
+            p.remove(old)
+        p.insert(0, copy.deepcopy(like_p.find('a:pPr', _NS)))
+    run_pr = p.find('a:r/a:rPr', _NS)
+    if like_r is not None and run_pr is not None:
+        run_pr.getparent().replace(run_pr, copy.deepcopy(like_r))
+
+
+def _fill_practical_info(ph, start_iso):
+    """The template ships this slide with empty column titles and an empty first column: fill them for the stay."""
+    info = _practical_info(start_iso)
+    _fill(ph, 11, "Température")
+    _fill(ph, 14, "Monnaie")
+    _fill(ph, 18, "Passeport")
+    if info is None:
+        _fill(ph, 16, "UTC +1")
+        _fill(ph, 19, "Température moyenne à Marrakech selon la saison.")
+    else:
+        _fill(ph, 16, info["utc"])
+        _fill(ph, 19, info["temperature"])
+        if 20 in ph:
+            _replace_text(ph[20], "mars", info["month"])
+            _replace_text(ph[20], "Quand il est 12h à Paris, il est 12h à Marrakech.", info["time"])
+    if 19 in ph and 13 in ph:
+        _copy_style(ph[19], ph[13])
+
+
+def add_intro_slides(pasteIntoPres, start_date=""):
     pres = _load(NEW_DA_FILE)
     for i in DA_INTRO_SLIDES:
         slide, ph = _copy_slide(pres, i, pasteIntoPres)
@@ -629,6 +703,8 @@ def add_intro_slides(pasteIntoPres):
             if inputs.input_dates:
                 sentence += f", du {inputs.input_dates}"
             _fill(ph, 10, sentence + ".")
+        elif i == 3:
+            _fill_practical_info(ph, start_date)
 
 
 def _fit_picture(pic, left, top, width, height, valign="center"):
