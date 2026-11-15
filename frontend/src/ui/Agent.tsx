@@ -63,6 +63,7 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   const [listening, setListening] = useState(false)
   const [conversation, setConversation] = useState(false) // hands-free: it talks, then listens again
   const [speaking, setSpeaking] = useState(false)
+  const [heardRaw, setHeardRaw] = useState('') // what the micro picks up while the assistant talks (shown, so you can see it hears you)
   const [opened, setOpened] = useState<Set<number>>(new Set()) // « Voir les options » buttons already clicked
   const conversationRef = useRef(false)
   const busyRef = useRef(false)
@@ -149,15 +150,19 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   /** Reads a reply with the Gemini voice. In conversation mode the person can talk over it, and the micro reopens afterwards. */
   const words = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().match(/[a-z0-9]+/g) || []
 
-  /** Is what the micro heard just the assistant's own voice coming back through the speakers? */
-  function isEcho(heard: string, spoken: string) {
-    const said = new Set(words(spoken))
+  const STOP_WORDS = new Set(['stop', 'attends', 'attend', 'arrete', 'pause', 'non', 'wait', 'hold', 'no', 'bon', 'ok', 'okay', 'ecoute', 'minute', 'sec'])
+
+  /** Did the person cut in? The micro also hears the assistant through the speakers, so only words that are NOT the assistant's count. */
+  function isInterruption(heard: string, spoken: string) {
+    const said = [...new Set(words(spoken))]
+    const known = (w: string) => said.some(s => s === w || (s.length > 3 && w.length > 3 && s.slice(0, 4) === w.slice(0, 4)))
     const mine = words(heard)
-    return mine.length > 0 && mine.filter(w => said.has(w)).length / mine.length >= 0.6
+    return mine.some(w => STOP_WORDS.has(w)) || mine.filter(w => w.length > 2 && !known(w)).length >= 2
   }
 
   /** The person talks over the assistant (voice, tap on the orb, space bar): it stops and the listening goes on. */
   function interrupt() {
+    setHeardRaw('')
     spokenId.current++
     speaker.current?.stop()
     detector.current.disarm()
@@ -170,6 +175,7 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
   /** Reads a reply with the Gemini voice. In conversation mode the micro stays open while it talks, so the person can cut in. */
   function speakAloud(text: string) {
     const id = ++spokenId.current
+    setHeardRaw('')
     setSpeaking(true)
     if (conversationRef.current) {
       detector.current.arm(interrupt)
@@ -201,7 +207,8 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
       resultCount.current = event.results.length
       const latest = event.results[event.results.length - 1]
       if (guard.current !== null) {
-        if (isEcho(latest[0].transcript, guard.current)) { skipResults.current = event.results.length; return }
+        setHeardRaw(latest[0].transcript)
+        if (!isInterruption(latest[0].transcript, guard.current)) { skipResults.current = event.results.length; return }
         interrupt()
         skipResults.current = Math.max(0, event.results.length - 1) // keep the words that cut in
       }
@@ -328,6 +335,7 @@ export default function AgentScreen({ form, onPatch, messages, setMessages, apiU
             </button>
             <p className="min-w-0 flex-1 truncate text-[15px] text-[var(--muted)]">
               {input || (busy ? t.thinking : speaking ? t.talking : t.listening)}
+              {speaking && heardRaw && <span className="ml-2 text-xs italic text-[var(--taupe)]">« {heardRaw.slice(-60)} »</span>}
             </p>
             <button type="button" className="btn btn-primary !min-h-[2.5rem] !px-4" onClick={toggleConversation}>{t.stop}</button>
           </div>
