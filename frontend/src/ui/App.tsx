@@ -568,6 +568,7 @@ export default function App() {
       fd.append('client', form.client.trim())
       fd.append('eventTitle', form.eventTitle.trim())
       fd.append('dates', datesText || 'à définir')
+      fd.append('startDate', form.startDate)
       fd.append('numDays', String(form.numDays))
       fd.append('numNights', String(nights))
       fd.append('numPeople', String(form.numPeople))
