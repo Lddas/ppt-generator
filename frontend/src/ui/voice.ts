@@ -1,84 +1,99 @@
 /** The assistant's voice (Gemini, served by the backend) and the "talk over it" detector. */
 
-import type { Lang } from './i18n'
 
-const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='
+const RATE = 24000 // what the server streams: raw 16-bit mono PCM
 
-/** Cuts a reply into short pieces so the first one starts playing while the rest is still being made. */
-export function splitForSpeech(text: string, max = 170): string[] {
-  const sentences = text.replace(/\s+/g, ' ').trim().match(/[^.!?…]+[.!?…]*\s*/g) || []
-  const chunks: string[] = []
-  for (const s of sentences) {
-    const last = chunks[chunks.length - 1]
-    if (last && last.length + s.length <= max) chunks[chunks.length - 1] = last + s
-    else chunks.push(s.trim())
-  }
-  return chunks.filter(Boolean)
-}
-
+/** The assistant's voice. The server streams the speech while Gemini makes it, and it is played as it arrives (first sound in ~1 s). */
 export class Speaker {
-  private el = new Audio()
+  private ctx: AudioContext | null = null
+  private sources: AudioBufferSourceNode[] = []
+  private controller: AbortController | null = null
   private token = 0
   constructor(private apiUrl: string, private password: string) {}
 
-  /** Must run inside a click: Safari only lets a page play sound after a tap. */
+  private context() {
+    if (!this.ctx) {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext
+      this.ctx = new Ctx()
+    }
+    return this.ctx!
+  }
+
+  /** Must run inside a click: browsers only let a page play sound after a tap. */
   unlock() {
-    this.el.src = SILENCE
-    this.el.play().catch(() => {})
+    this.context().resume().catch(() => {})
   }
 
   stop() {
     this.token++
-    this.el.pause()
-    window.speechSynthesis?.cancel()
+    this.controller?.abort()
+    this.sources.forEach(source => { try { source.stop() } catch { /* already finished */ } })
+    this.sources = []
   }
 
-  private async fetchChunk(text: string): Promise<string> {
-    const res = await fetch(`${this.apiUrl}/speak`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-App-Password': this.password },
-      body: JSON.stringify({ text }),
-    })
-    if (!res.ok) throw new Error(`speak ${res.status}`)
-    return URL.createObjectURL(await res.blob())
-  }
+  /** Reads the text out loud; resolves when finished or interrupted. If the server voice is down it stays silent: never a second voice. */
+  async say(text: string, onStart?: () => void): Promise<'ok' | 'unavailable'> {
+    this.stop()
+    const id = this.token
+    const ctx = this.context()
+    await ctx.resume().catch(() => {})
+    const controller = new AbortController()
+    this.controller = controller
+    let playAt = 0
+    let started = false
+    let leftover = new Uint8Array(0)
+    let pending: Float32Array[] = []
+    let pendingLength = 0
 
-  private play(url: string): Promise<void> {
-    return new Promise(resolve => {
-      this.el.onended = this.el.onerror = () => resolve()
-      this.el.src = url
-      this.el.play().catch(() => resolve())
-    })
-  }
-
-  /** Reads the text out loud; resolves when finished or interrupted. Falls back to the browser voice if the server one fails. */
-  async say(text: string, lang: Lang, onStart?: () => void): Promise<void> {
-    const id = ++this.token
-    this.el.pause()
-    window.speechSynthesis?.cancel()
-    const pieces = splitForSpeech(text)
-    const urls = pieces.map(p => this.fetchChunk(p))
-    urls.forEach(u => u.catch(() => {})) // handled below, in order
-    try {
-      for (let i = 0; i < urls.length; i++) {
-        const url = await urls[i]
-        if (id !== this.token) return
-        if (i === 0) onStart?.()
-        await this.play(url)
-        URL.revokeObjectURL(url)
-        if (id !== this.token) return
-      }
-    } catch {
-      if (id !== this.token || !window.speechSynthesis) return
-      await new Promise<void>(resolve => {
-        const u = new SpeechSynthesisUtterance(text)
-        u.lang = lang === 'en' ? 'en-US' : 'fr-FR'
-        u.voice = window.speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith(lang)) || null
-        u.onend = u.onerror = () => resolve()
-        onStart?.()
-        window.speechSynthesis.speak(u)
-      })
+    const schedule = () => {
+      if (!pendingLength) return
+      const samples = new Float32Array(pendingLength)
+      let offset = 0
+      for (const piece of pending) { samples.set(piece, offset); offset += piece.length }
+      pending = []; pendingLength = 0
+      const buffer = ctx.createBuffer(1, samples.length, RATE)
+      buffer.copyToChannel(samples, 0)
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+      source.connect(ctx.destination)
+      if (!started) { started = true; playAt = ctx.currentTime + 0.08; onStart?.() }
+      playAt = Math.max(playAt, ctx.currentTime + 0.01) // if the network is late, carry on right away
+      source.start(playAt)
+      playAt += buffer.duration
+      this.sources.push(source)
     }
+
+    try {
+      const res = await fetch(`${this.apiUrl}/speak`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-App-Password': this.password },
+        body: JSON.stringify({ text }),
+        signal: controller.signal,
+      })
+      if (!res.ok || !res.body) return 'unavailable'
+      const reader = res.body.getReader()
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (id !== this.token) return 'ok'
+        if (done) break
+        const bytes = new Uint8Array(leftover.length + value.length)
+        bytes.set(leftover); bytes.set(value, leftover.length)
+        const usable = bytes.length - (bytes.length % 2)
+        leftover = bytes.slice(usable)
+        const view = new DataView(bytes.buffer, 0, usable)
+        const samples = new Float32Array(usable / 2)
+        for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(i * 2, true) / 32768
+        pending.push(samples); pendingLength += samples.length
+        if (pendingLength >= RATE / 8) schedule() // about 125 ms per piece
+      }
+      schedule()
+      // wait for the end of what was scheduled
+      const deadline = Date.now() + Math.max(playAt - ctx.currentTime, 0) * 1000 + 3000 // a suspended audio clock must not hang the conversation
+      while (id === this.token && ctx.currentTime < playAt && Date.now() < deadline) await new Promise(r => setTimeout(r, 60))
+    } catch {
+      if (!started && id === this.token) return 'unavailable' // network down; an interruption is not a failure
+    }
+    return 'ok'
   }
 }
 

@@ -1,4 +1,5 @@
 import datetime
+import itertools
 import io
 import hmac
 import os
@@ -9,7 +10,7 @@ from typing import List
 
 from fastapi import FastAPI, File, Form, Header, Request, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
 # Reuse existing generation logic (now in same directory)
 import copying_and_modifying_slide as gen
@@ -444,7 +445,8 @@ def agent(payload: dict, request: Request, x_app_password: str = Header(None)):
     try:
         names = agent_module.catalog(load_index_json("."), ALLOWED_HOTELS)
         return agent_module.respond(payload.get("messages") or [], payload.get("form") or {}, names,
-                                    language="en" if payload.get("language") == "en" else "fr")
+                                    language="en" if payload.get("language") == "en" else "fr",
+                                    voice=bool(payload.get("voice")))
     except agent_module.AgentError as error:
         raise HTTPException(status_code=error.status, detail=error.message)
 
@@ -454,7 +456,7 @@ _speech_calls = defaultdict(deque)
 
 @app.post("/speak")
 def speak(payload: dict, request: Request, x_app_password: str = Header(None)):
-    """The assistant's voice (Gemini TTS) as a WAV file."""
+    """The assistant's voice (Gemini TTS), streamed as raw 16-bit 24 kHz mono PCM: playback starts after ~1 s."""
     require_password(request, x_app_password)
     calls = _speech_calls[_visitor(request)]
     now = time.time()
@@ -464,9 +466,13 @@ def speak(payload: dict, request: Request, x_app_password: str = Header(None)):
         raise HTTPException(status_code=429, detail="Trop de messages vocaux, réessaie dans quelques minutes.")
     calls.append(now)
     try:
-        return Response(content=agent_module.speech(payload.get("text")), media_type="audio/wav")
+        stream = agent_module.speech_stream(payload.get("text"))
+        first = next(stream)  # a failure before the first sound is still a proper HTTP error
     except agent_module.AgentError as error:
         raise HTTPException(status_code=error.status, detail=error.message)
+    except StopIteration:
+        raise HTTPException(status_code=502, detail="La voix est indisponible pour le moment.")
+    return StreamingResponse(itertools.chain([first], stream), media_type="audio/L16; rate=24000; channels=1")
 
 
 @app.get("/")

@@ -247,44 +247,54 @@ def _call_once(body, api_key, model):
         return json.loads(response.read().decode("utf-8"))
 
 
-def call_gemini(body, api_key, model, hedge_after=4.0):
-    """Calls the model. If it is overloaded (429/500/503/404) or slow (> hedge_after s) the next Flash is tried
-    at the same time, and the first answer wins: one slow model never holds the conversation up."""
-    models = [model] + [m for m in FALLBACK_MODELS if m != model]
+def _race(models, call, hedge_after, fatal=lambda error: False):
+    """Runs call(model) on the models in order, but never waits: the next model starts at once when one fails
+    and also when one is just slow (> hedge_after s). The first success wins; otherwise the last error is raised."""
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(models))
-    pending, started, last, hedge_wait = set(), 0, None, False
+    pending, started, last, slow = set(), 0, None, False
     try:
         while True:
-            if started < len(models) and (not pending or last is not None or hedge_wait):
-                pending.add(pool.submit(_call_once, body, api_key, models[started]))
+            if started < len(models) and (not pending or slow or last is not None):
+                pending.add(pool.submit(call, models[started]))
                 started += 1
-            hedge_wait = False
+            slow = False
             if not pending:
-                raise last or AgentError(504, "Gemini ne répond pas, réessaie dans un instant.")
+                raise last
             done, pending = concurrent.futures.wait(pending, timeout=hedge_after, return_when=concurrent.futures.FIRST_COMPLETED)
             if not done:
-                hedge_wait = True  # nothing yet: start the next model without cancelling this one
+                slow = True  # nothing yet: start the next model without cancelling this one
                 continue
             for future in done:
                 try:
                     return future.result()
-                except urllib.error.HTTPError as error:
-                    detail = error.read().decode("utf-8", "replace")[:300]
-                    if error.code in (400, 403) and "API key" in detail:
-                        raise AgentError(502, "La clé Gemini est refusée. Vérifie GEMINI_API_KEY sur le serveur.")
-                    last = AgentError(429 if error.code == 429 else 502, "Gemini est saturé pour le moment, réessaie dans quelques secondes."
-                                      if error.code in (429, 503) else f"Gemini a répondu {error.code}.")
-                    if error.code not in (404, 429, 500, 503):
-                        raise last
-                except (urllib.error.URLError, TimeoutError):
-                    last = AgentError(504, "Gemini ne répond pas, réessaie dans un instant.")
+                except Exception as error:  # noqa: BLE001 - classified by the caller
+                    if fatal(error):
+                        raise
+                    last = error
             if started >= len(models) and not pending:
                 raise last
     finally:
         pool.shutdown(wait=False)
 
 
-def respond(messages, form, names, today=None, api_key=None, model=None, caller=call_gemini, language="fr"):
+def call_gemini(body, api_key, model, hedge_after=4.0):
+    """Calls the model; if it is overloaded (429/500/503/404) or slow, the next Flash is raced against it."""
+    models = [model] + [m for m in FALLBACK_MODELS if m != model]
+    retriable = (404, 429, 500, 503)
+    try:
+        return _race(models, lambda m: _call_once(body, api_key, m), hedge_after,
+                     fatal=lambda e: isinstance(e, urllib.error.HTTPError) and e.code not in retriable)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", "replace")[:300]
+        if error.code in (400, 403) and "API key" in detail:
+            raise AgentError(502, "La clé Gemini est refusée. Vérifie GEMINI_API_KEY sur le serveur.")
+        raise AgentError(429 if error.code == 429 else 502, "Gemini est saturé pour le moment, réessaie dans quelques secondes."
+                         if error.code in (429, 503) else f"Gemini a répondu {error.code}.")
+    except (urllib.error.URLError, TimeoutError):
+        raise AgentError(504, "Gemini ne répond pas, réessaie dans un instant.")
+
+
+def respond(messages, form, names, today=None, api_key=None, model=None, caller=call_gemini, language="fr", voice=False):
     """One turn of the conversation. messages: [{role: 'user'|'model', text}]."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -299,6 +309,8 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
     prompt = system_prompt(names, form, missing_fields(form), today)
     if language == "en":
         prompt += "\n\nLANGUAGE: the user speaks English. Write `reply` in warm, short, natural English (the rules above still apply). Catalog names stay EXACTLY as listed (they are French proper names); never translate them in the form fields. Never set eventTitle unless the user gave an explicit title."
+    if voice:
+        prompt += "\n\nMODE VOCAL: ta réponse est lue à voix haute, tout de suite. Réponds en UNE seule phrase courte (20 mots maximum), sans liste, sans parenthèses, sans émojis. Les cases du formulaire se remplissent normalement."
     body = {
         "systemInstruction": {"parts": [{"text": prompt}]},
         "contents": [{"role": m["role"], "parts": [{"text": str(m["text"])[:2000]}]} for m in turns],
@@ -378,21 +390,65 @@ def speech(text, api_key=None, voice=None, caller=_call_once):
         "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {
             "prebuiltVoiceConfig": {"voiceName": voice or os.environ.get("GEMINI_VOICE") or TTS_VOICE}}}},
     }
+    def one(model):
+        answer = caller(body, api_key, model)
+        part = answer["candidates"][0]["content"]["parts"][0]["inlineData"]  # no audio in the answer: an error, next model
+        audio = base64.b64decode(part["data"])
+        return audio if part.get("mimeType", "").startswith("audio/wav") else _wav(audio)
+    try:
+        return _race(TTS_MODELS, one, hedge_after=2.5)
+    except urllib.error.HTTPError:
+        raise AgentError(502, "La voix est indisponible pour le moment.")
+    except (urllib.error.URLError, TimeoutError):
+        raise AgentError(504, "La voix ne répond pas.")
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise AgentError(502, "La voix est indisponible pour le moment.")
+
+
+def _tts_body(text, voice):
+    return {
+        "contents": [{"parts": [{"text": text}]}],
+        "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {
+            "prebuiltVoiceConfig": {"voiceName": voice or os.environ.get("GEMINI_VOICE") or TTS_VOICE}}}},
+    }
+
+
+def _open_stream(request):
+    return urllib.request.urlopen(request, timeout=20)
+
+
+def speech_stream(text, api_key=None, voice=None, opener=_open_stream):
+    """Spoken French as raw 16-bit 24 kHz mono PCM, yielded while Gemini still produces it (first sound in ~0.7 s)."""
+    api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        raise AgentError(503, "Clé Gemini manquante sur le serveur (GEMINI_API_KEY).")
+    text = re.sub(r"\s+", " ", str(text or "")).strip()[:700]
+    if not text:
+        raise AgentError(400, "Rien à dire.")
+    body = json.dumps(_tts_body(text, voice)).encode("utf-8")
     last = AgentError(502, "La voix est indisponible pour le moment.")
     for model in TTS_MODELS:
+        url = GEMINI_URL.format(model=model).replace(":generateContent", ":streamGenerateContent") + "?alt=sse"
+        headers = {"Content-Type": "application/json"}
+        if api_key.startswith("AIza"):
+            headers["x-goog-api-key"] = api_key
+        else:
+            url += "&key=" + urllib.parse.quote(api_key, safe="")
+        started = False
         try:
-            answer = caller(body, api_key, model)
-            part = answer["candidates"][0]["content"]["parts"][0]["inlineData"]
-            audio = base64.b64decode(part["data"])
-            return audio if part.get("mimeType", "").startswith("audio/wav") else _wav(audio)
-        except urllib.error.HTTPError as error:
-            if error.code in (400, 403):
-                error.read()
-                last = AgentError(502, "La clé Gemini est refusée pour la voix.")
-            elif error.code not in (404, 429, 500, 503):
-                raise AgentError(502, f"La voix a répondu {error.code}.")
-        except (urllib.error.URLError, TimeoutError):
+            for line in opener(urllib.request.Request(url, data=body, headers=headers, method="POST")):
+                line = line.strip()
+                if not line.startswith(b"data:"):
+                    continue
+                part = json.loads(line[5:])["candidates"][0]["content"]["parts"][0].get("inlineData")
+                if part and part.get("data"):
+                    started = True
+                    yield base64.b64decode(part["data"])
+        except (urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, TypeError):
+            if started:
+                return  # cut off in the middle: what was said is said
             last = AgentError(504, "La voix ne répond pas.")
-        except (KeyError, IndexError, TypeError, ValueError):
-            pass  # no audio in the answer: try the next model
+            continue
+        if started:
+            return
     raise last
