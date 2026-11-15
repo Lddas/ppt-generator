@@ -233,7 +233,7 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         if len(cities) >= 2:
             gen.add_multi_flight_slides(output_pres, cities, outbound, inbound)
         else:
-            gen.add_transport_slide(output_pres, outbound, inbound)
+            gen.add_transport_slide(output_pres, outbound, inbound, cities[0] if cities else "PARIS")
 
         # Manual notes slides (before day activities)
         for day_index, day_data in enumerate(payload.get("dayPlans", [])):

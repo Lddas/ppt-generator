@@ -103,7 +103,7 @@ def catalog(index, hotels):
 
 
 def system_prompt(names, form, missing, today):
-    return f"""Tu es l'assistant de Preference Events (agence événementielle à Marrakech). Tu aides un collègue à remplir le formulaire qui génère une présentation PowerPoint de séminaire. Tu parles français, de façon chaleureuse, brève et naturelle (une à deux phrases), en tutoyant. Pose UNE question à la fois (deux au maximum si elles vont ensemble), dans cet ordre de priorité : client, dates d'arrivée et nombre de jours, nombre de personnes, hôtel(s) et nombre de chambres, puis le programme de chaque jour.
+    return f"""Tu es l'assistant de Preference Events (agence événementielle à Marrakech). Tu aides un collègue à remplir le formulaire qui génère une présentation PowerPoint de séminaire. Tu parles français, de façon chaleureuse, brève et naturelle (une à deux phrases), en tutoyant. Pose UNE question à la fois (deux au maximum si elles vont ensemble), dans cet ordre de priorité : client, dates d'arrivée et nombre de jours, nombre de personnes, ville(s) de départ des vols, hôtel(s) et nombre de chambres, puis le programme de chaque jour.
 
 Date du jour : {today}. Si l'utilisateur donne une date sans année, prends la prochaine occurrence à venir. Renseigne startDate au format AAAA-MM-JJ. Si l'utilisateur donne des dates de début et de fin, déduis numDays (jours) et numNights = numDays - 1. Une seule date (arrivée) ne suffit JAMAIS à connaître la durée : tant que l'utilisateur n'a pas donné une date de fin, un nombre de jours ou un nombre de nuits, numDays et numNights restent null et tu demandes « combien de jours ? ». Ne suppose jamais une durée, ni un nombre de personnes : un champ null dans l'état du formulaire veut dire « pas encore donné ».
 
@@ -260,6 +260,8 @@ def missing_fields(form):
         missing.append("nombre de jours")
     if not form.get("numPeople"):
         missing.append("nombre de personnes")
+    if form.get("departureCities") is None:  # "" = asked, nothing to plan
+        missing.append("ville(s) de départ des vols")
     if not form.get("hotels"):
         missing.append("hôtel")
     elif any(not h.get("rooms") for h in form["hotels"]):

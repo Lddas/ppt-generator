@@ -39,7 +39,7 @@ const forAgent = (form: Form, hasLogo: boolean, known: Set<string>) => ({
   numDays: known.has('numDays') ? form.numDays : null,
   numNights: known.has('numNights') ? form.numNights : null,
   numPeople: known.has('numPeople') ? form.numPeople : null,
-  departureCities: form.departureCities,
+  departureCities: known.has('departureCities') ? form.departureCities : null,
   hotels: form.hotels, days: form.days.map(d => ({ slots: d.slots, notes: d.notes })),
 })
 

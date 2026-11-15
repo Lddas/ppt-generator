@@ -542,7 +542,7 @@ function AppInner() {
   const [mode, setMode] = useState<'agent' | 'form' | 'recap' | 'admin'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
   const [chat, setChat] = useState<ChatMessage[]>([])
   // what the assistant has actually been told so far (the summary shows the rest as « à renseigner »)
-  const [known, setKnown] = useState<Set<string>>(() => (loadDraft().client.trim() ? new Set(['client', 'eventTitle', 'startDate', 'numDays', 'numNights', 'numPeople', 'hotels', 'days']) : new Set()))
+  const [known, setKnown] = useState<Set<string>>(() => (loadDraft().client.trim() ? new Set(['client', 'eventTitle', 'startDate', 'numDays', 'numNights', 'numPeople', 'departureCities', 'hotels', 'days']) : new Set()))
   const logoInput = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState(0)
   const [maxReached, setMaxReached] = useState(0)
