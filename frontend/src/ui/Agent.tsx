@@ -377,9 +377,9 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
             </div>
           )}
           {done && !busy && revealing === -1 && (
-            <div className="rounded-[14px] border border-[#bfd8c9] bg-[#edf6f0] p-4 rise">
-              <p className="font-semibold text-[var(--ok)]">{t.allDone}</p>
-              <p className="mt-0.5 text-sm text-[var(--ok)]">{t.doneHelp}</p>
+            <div className="rounded-[14px] border border-[var(--line)] bg-white p-4 rise">
+              <p className="font-semibold">{t.allDone}</p>
+              <p className="mt-0.5 text-sm text-[var(--muted)]">{t.doneHelp}</p>
               <button type="button" className="btn btn-primary mt-3" onClick={onReview}>
                 {t.recap} <Icon name="right" className="w-4 h-4" />
               </button>

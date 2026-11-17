@@ -552,7 +552,7 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
         mentions = "logo" in reply.lower()
         asked_before = any("logo" in str(m["text"]).lower() for m in turns if m["role"] == "model")
         logo_choices = {"kind": "logo", "label": CHOICE_KINDS["logo"], "options": [], "open": True}
-        if mentions and "?" in reply:
+        if mentions and "?" in reply and not asked_before:  # already asked once: « non » is an answer, never ask again
             choices = logo_choices
         elif not still_missing and not mentions and not asked_before and not pending:
             reply += " Do you have the client's logo? You can drop it here." if language == "en" else " Tu as le logo du client ? Tu peux le déposer ici."
@@ -569,9 +569,12 @@ TTS_MODELS = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-f
 TTS_VOICE = "Charon"  # override with GEMINI_VOICE
 
 
+VOICE_STYLE = "Dis ce texte d'une voix d'homme grave, posée, chaleureuse et toujours la même, à un rythme calme et naturel : "
+
+
 def _tts_body(text, voice):
     return {
-        "contents": [{"parts": [{"text": text}]}],
+        "contents": [{"parts": [{"text": VOICE_STYLE + text}]}],
         "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {
             "prebuiltVoiceConfig": {"voiceName": voice or usage.get_config().get("voice") or os.environ.get("GEMINI_VOICE") or TTS_VOICE}}}},
     }

@@ -239,6 +239,12 @@ assert "partent" not in r["reply"] and not any("départ" in m for m in r["missin
 def truncated(body, key, model): return {"candidates": [{"content": {"parts": [{"text": '{"reply": "ok", "form": {"days": [{"day": 1,'}]}}]}
 r = agent.respond([{"role": "user", "text": "pour un test remplis tout au hasard"}], {**form2, "numDays": 2, "days": [{"slots": ["", "", "", "", ""], "notes": []}] * 2}, NAMES, today="2026-11-14", api_key="k", model="m", caller=truncated)
 assert r["patch"].get("days"), r
+# the logo question is asked once: after a « non » it does not come back
+H = [{"role": "user", "text": "x"}, {"role": "model", "text": "As-tu le logo du client à ajouter ?"}, {"role": "user", "text": "Non"}]
+r = agent.respond(H, {"client": "A", "startDate": "2026-11-21", "numDays": 1, "numPeople": 10, "departureCities": "", "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}],
+                      "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}, NAMES, today="2026-11-14", api_key="k", model="m",
+                  caller=fake({"reply": "C'est noté, pas de logo. Tout est complet, veux-tu ajuster quelque chose ?", "done": False}))
+assert not r["choices"] or r["choices"]["kind"] != "logo", r
 # « remplis tout » before the stay is known: never claim it was done
 r = agent.respond([{"role": "user", "text": "peux tout remplir au hasard c'est un test"}], {}, NAMES, today="2026-11-14", api_key="k", model="m", caller=truncated)
 assert not r["patch"].get("days") and "d'abord" in r["reply"] and "rempli" not in r["reply"], r
