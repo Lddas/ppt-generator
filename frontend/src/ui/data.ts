@@ -66,6 +66,12 @@ export const fitsSlot = (slot: string, name: string) =>
 /** After a departure the day is over. */
 export const isDeparture = (name: string) => name.toUpperCase().startsWith('DEPART')
 
+/** Slots that count in a day: nothing happens after the departure, so a day ending with it has fewer than 5. */
+export const daySlotTotal = (slots: string[]) => {
+  const k = slots.findIndex(isDeparture)
+  return k >= 0 ? k + 1 : 5
+}
+
 export type HotelEntry = { hotelName: string; rooms: number }
 export type DayPlan = {
   dateOverride: string | null // null = computed from the start date

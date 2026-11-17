@@ -228,4 +228,15 @@ nofly = {**form, "days": [{"slots": ["", "QUAD", "", "", ""], "notes": []}]}
 del nofly["departureCities"]
 r = asked_turn({"reply": "Prêt ?", "done": True}, nofly)
 assert r["done"] is False and any("départ" in m for m in r["missing"]), r
+# the departure city is asked by the server, once, and never blocks the end afterwards
+form2 = {**nofly, "numPeople": 10}
+r = asked_turn({"reply": "Parfait, tout est prêt !", "done": True}, form2, BEFORE_LOGO)
+assert "partent" in r["reply"] and r["done"] is False and r["choices"] is None, r
+ASKED_CITY = ASKED + [{"role": "model", "text": "D'où partent les participants ? Une ville, ou plusieurs."}, {"role": "user", "text": "de Paris"}]
+r = asked_turn({"reply": "Parfait.", "done": True}, form2, ASKED_CITY)
+assert "partent" not in r["reply"] and not any("départ" in m for m in r["missing"]), r
+# a truncated answer to « remplis tout » is not an error: the server fills the programme itself
+def truncated(body, key, model): return {"candidates": [{"content": {"parts": [{"text": '{"reply": "ok", "form": {"days": [{"day": 1,'}]}}]}
+r = agent.respond([{"role": "user", "text": "pour un test remplis tout au hasard"}], {**form2, "numDays": 2, "days": [{"slots": ["", "", "", "", ""], "notes": []}] * 2}, NAMES, today="2026-11-14", api_key="k", model="m", caller=truncated)
+assert r["patch"].get("days"), r
 print("test_agent: ok")

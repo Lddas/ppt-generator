@@ -6,10 +6,11 @@ import Orb from './Orb'
 import { useLang, useT } from './i18n'
 
 export type Choices = { kind: string; label: string; options: string[]; open?: boolean }
-export type ChatMessage = { role: 'user' | 'model' | 'error'; text: string; choices?: Choices | null }
+export type ChatMessage = { role: 'user' | 'model' | 'error'; text: string; choices?: Choices | null; live?: boolean }
 
 const TEXTS = {
   fr: {
+    startConversation: 'Démarrer la conversation', startMic: 'Parler au micro', startType: 'Écrire', startHint: 'Comment veux-tu qu’on commence ?', retry: 'Je n’ai pas bien compris, tu peux répéter ?',
     greeting: 'Salut ! Je suis l’assistant Preference Events. Raconte-moi ton séminaire et je remplis tout à ta place. Quand tu hésites (hôtel, restaurant, activité…), demande-moi les options et je te les montre. On commence : quel est le nom du client ?',
     thinking: 'Je réfléchis…', talking: 'Je parle… (parle ou clique sur la bulle pour me couper)', listening: 'Je t’écoute, parle…', dictating: 'Je t’écoute…', typing: 'Écris ou dicte…',
     conversation: 'Conversation', stop: 'Arrêter', see: 'Voir les',
@@ -18,6 +19,7 @@ const TEXTS = {
     labels: {} as Record<string, string>,
   },
   en: {
+    startConversation: 'Start the conversation', startMic: 'Use the microphone', startType: 'Type', startHint: 'How would you like to start?', retry: 'I didn’t quite get that, could you say it again?',
     greeting: 'Hi! I’m the Preference Events assistant. Tell me about your seminar and I’ll fill everything in for you. When you’re unsure (hotel, restaurant, activity…), ask me for the options and I’ll show them. Let’s start: what’s the client’s name?',
     thinking: 'Thinking…', talking: 'Speaking… (talk or click the orb to interrupt)', listening: 'I’m listening, go ahead…', dictating: 'Listening…', typing: 'Type or dictate…',
     conversation: 'Conversation', stop: 'Stop', see: 'See the',
@@ -70,6 +72,10 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
   const [conversation, setConversation] = useState(false) // hands-free: it talks, then listens again
   const [speaking, setSpeaking] = useState(false)
   const [heardRaw, setHeardRaw] = useState('') // what the micro picks up while the assistant talks (shown, so you can see it hears you)
+  const [revealing, setRevealing] = useState(-1) // index of the reply being written out, -1 when none
+  const [go, setGo] = useState(true) // false while a spoken reply waits for its first sound
+  const stick = useRef(true) // the log follows the latest message only while the person is at the bottom
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const [opened, setOpened] = useState<Set<number>>(new Set()) // « Voir les options » buttons already clicked
   const conversationRef = useRef(false)
   const busyRef = useRef(false)
@@ -88,16 +94,18 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
   const getLevel = React.useCallback(() => detector.current.level, [])
   if (!speaker.current) speaker.current = new Speaker(apiUrl, password)
 
-  const shown = messages.length ? messages : [GREETING]
+  const shown = messages
 
   // The conversation scrolls inside its own frame and always follows the latest message
   useEffect(() => {
     const log = logRef.current
     if (!log) return
     // a list of choices is tall: keep the question that goes with it in view
+    if (!stick.current) return // the person scrolled up to read: do not drag them back down
     const last = log.querySelector<HTMLElement>('[data-last-choices]')
     log.scrollTo({ top: last ? Math.max(last.offsetTop - 16, 0) : log.scrollHeight, behavior: 'smooth' })
-  }, [messages, busy, done, opened])
+  }, [messages, busy, done, opened, revealing])
+  useEffect(() => { if (messages[messages.length - 1]?.role === 'user') stick.current = true }, [messages]) // sending brings you back down
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (conversationRef.current && guard.current !== null && (e.key === ' ' || e.key === 'Escape')) { e.preventDefault(); interruptRef.current() } }
     window.addEventListener('keydown', onKey)
@@ -135,15 +143,19 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
       }
       const data = await res.json()
       onPatch(data.patch || {})
-      setMessages([...history, { role: 'model', text: data.reply, choices: data.choices || null }])
+      setMessages([...history, { role: 'model', text: data.reply, choices: data.choices || null, live: true }])
+      setRevealing(history.length)
+      setGo(!conversationRef.current) // spoken: the text starts with the voice
       setDone(!!data.done)
       if (conversationRef.current) speakAloud(data.reply)
     } catch (e: any) {
       failed = true
       const offline = e?.message === 'Failed to fetch'
+      const isAuth = /mot de passe|password/i.test(e?.message || '')
       setMessages([...history, {
-        role: 'error',
-        text: offline ? 'Le serveur ne répond pas. Réessaie dans un instant, ou remplis le formulaire à la main.' : e.message,
+        role: 'error', // shown like a normal reply: people do not know what a technical error means
+        text: offline ? tt('Le serveur ne répond pas. Réessaie dans un instant, ou remplis le formulaire à la main.', 'The server is not answering. Try again in a moment, or fill in the form by hand.')
+          : isAuth ? e.message : t.retry,
       }])
     } finally {
       busyRef.current = false
@@ -170,6 +182,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
 
   /** The person talks over the assistant (voice, tap on the orb, space bar): it stops and the listening goes on. */
   function interrupt() {
+    setRevealing(-1)
     setHeardRaw('')
     spokenId.current++
     speaker.current?.stop()
@@ -189,8 +202,9 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
       detector.current.arm(interrupt)
       startListening(text)
     }
-    speaker.current!.say(text).then(result => {
+    speaker.current!.say(text, () => { if (id === spokenId.current) setGo(true) }).then(result => {
       if (id !== spokenId.current) return // interrupted, or a newer reply took over
+      setGo(true)
       if (result === 'unavailable' && !voiceNotice.current) {
         voiceNotice.current = true
         setMessages(m => [...m, { role: 'error', text: t.voiceDown }])
@@ -257,6 +271,16 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
     startListening()
   }
 
+  /** First screen: nothing is written until the person picks how to talk. Then the greeting is written out. */
+  async function begin(how: 'conversation' | 'mic' | 'type') {
+    setMessages([{ role: 'model', text: t.greeting, live: true }])
+    setRevealing(0)
+    setGo(how !== 'conversation')
+    if (how === 'conversation') { await toggleConversation(); if (!conversationRef.current) setGo(true) }
+    else if (how === 'mic') { speaker.current?.unlock(); startListening() }
+    else setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
   async function toggleConversation() {
     const next = !conversationRef.current
     conversationRef.current = next
@@ -296,7 +320,28 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
           </div>
         </header>
 
-        <div ref={logRef} className="relative min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5" role="log" aria-live="polite">
+        {!messages.length ? (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 py-6 text-center rise">
+            <p className="text-[15px] text-[var(--muted)]">{t.startHint}</p>
+            <div className="flex w-full max-w-sm flex-col gap-2.5">
+              {SpeechRecognitionApi && (
+                <button type="button" className="btn btn-primary !min-h-[3rem]" onClick={() => begin('conversation')}>
+                  <Icon name="wave" className="w-5 h-5" /> {t.startConversation}
+                </button>
+              )}
+              {SpeechRecognitionApi && (
+                <button type="button" className="btn btn-ghost !min-h-[3rem] bg-white" onClick={() => begin('mic')}>
+                  <Icon name="mic" className="w-5 h-5" /> {t.startMic}
+                </button>
+              )}
+              <button type="button" className="btn btn-ghost !min-h-[3rem] bg-white" onClick={() => begin('type')}>
+                <Icon name="chat" className="w-5 h-5" /> {t.startType}
+              </button>
+            </div>
+          </div>
+        ) : (
+        <div ref={logRef} onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120 }}
+          className="relative min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5" role="log" aria-live="polite">
           {shown.map((m, i) => (
             <div key={i} data-last-choices={m.choices && i === shown.length - 1 && !busy && (m.choices.open || opened.has(i) || m.choices.kind === 'logo') ? '' : undefined}
               className={`flex flex-col gap-3 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
@@ -304,10 +349,12 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
                 m.role === 'user'
                   ? 'rounded-br-[6px] bg-[var(--burgundy)] text-white'
                   : m.role === 'error'
-                    ? 'rounded-bl-[6px] border border-[#e8c3be] bg-[#fbeceb] text-[var(--danger)]'
+                    ? 'rounded-bl-[6px] border border-[var(--line)] bg-[var(--cream)]'
                     : 'rounded-bl-[6px] border border-[var(--line)] bg-[var(--cream)]'
-              }`}>{m.text}</p>
-              {m.choices && i === shown.length - 1 && !busy && (
+              }`} onClick={i === revealing ? () => setRevealing(-1) : undefined}>
+                {i === revealing && m.live ? <Typed text={m.text} run={go} cps={conversation ? 17 : 70} onDone={() => setRevealing(r => (r === i ? -1 : r))} /> : m.text}
+              </p>
+              {m.choices && i === shown.length - 1 && !busy && revealing === -1 && (
                 m.choices.kind === 'logo' ? (
                   <LogoPicker logoFile={logoFile} onLogo={onLogo} onClear={onLogoClear} onSkip={() => send(tt('Pas de logo pour le moment', 'No logo for now'))} onDone={() => send(tt('Le logo est ajouté', 'The logo is added'))} />
                 ) : m.choices.open || opened.has(i) ? (
@@ -329,7 +376,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
               </p>
             </div>
           )}
-          {done && !busy && (
+          {done && !busy && revealing === -1 && (
             <div className="rounded-[14px] border border-[#bfd8c9] bg-[#edf6f0] p-4 rise">
               <p className="font-semibold text-[var(--ok)]">{t.allDone}</p>
               <p className="mt-0.5 text-sm text-[var(--ok)]">{t.doneHelp}</p>
@@ -339,8 +386,9 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
             </div>
           )}
         </div>
+        )}
 
-        {conversation ? (
+        {!messages.length ? null : conversation ? (
           <div className="flex items-center gap-3 border-t border-[var(--line)] px-3 py-3 sm:gap-4 sm:px-6 sm:py-4" role="status" aria-live="polite">
             <button type="button" onClick={() => { if (speaking) interrupt() }} className="rounded-full" aria-label={tt('Interrompre', 'Interrupt')} title={tt('Clique pour interrompre', 'Click to interrupt')}>
               <Orb state={busy ? 'thinking' : speaking ? 'speaking' : 'listening'} getLevel={getLevel} />
@@ -356,6 +404,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
             <div className="flex items-end gap-2">
               <textarea
                 className="field min-h-[2.75rem] flex-1 resize-none text-[15px]"
+                ref={inputRef}
                 rows={1}
                 value={input}
                 placeholder={conversation ? (busy ? t.thinking : speaking ? t.talking : t.listening) : listening ? t.dictating : t.typing}
@@ -461,4 +510,20 @@ function LogoPicker({ logoFile, onLogo, onClear, onSkip, onDone }: {
       )}
     </div>
   )
+}
+
+
+/** Writes a reply out little by little, like a person typing. `run` is false while a spoken reply waits for its first sound. */
+function Typed({ text, run, cps, onDone }: { text: string; run: boolean; cps: number; onDone: () => void }) {
+  const [n, setN] = useState(0)
+  const done = useRef(onDone)
+  done.current = onDone
+  useEffect(() => {
+    if (!run) return
+    const step = Math.max(1, Math.round(cps / 30))
+    const id = setInterval(() => setN(k => Math.min(text.length, k + step)), 33)
+    return () => clearInterval(id)
+  }, [run, text, cps])
+  useEffect(() => { if (n >= text.length) done.current() }, [n, text])
+  return <>{text.slice(0, n)}</>
 }
