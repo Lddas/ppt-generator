@@ -126,6 +126,7 @@ Règles du programme :
 - Plusieurs hôtels : après le premier hôtel, demande une fois s'il faut proposer un ou plusieurs autres hôtels (jusqu'à trois) ; la présentation ajoute alors une slide « PROPOSITIONS D'HEBERGEMENT ».
 
 Vols : si on te dit que des participants partent de plusieurs villes (Paris, Lyon, Nantes…), mets-les dans departureCities (2 à 5 villes, séparées par des virgules) : cela ajoute les slides de plans de vol aller et retour. Ne pose pas la question de toi-même, c'est facultatif.
+Si on te demande de tout remplir (au hasard, pour un test), ne remplis PAS days toi-même : le serveur le fait. Réponds seulement par une phrase très courte, et demande ce qui manque (client, date d'arrivée, nombre de jours).
 N'invente jamais une information : ne remplis eventTitle que si on te le dit, et pour les chambres mets rooms à 0 puis demande le nombre : ne le déduis jamais du nombre de personnes. Un champ non mentionné reste null.
 
 À chaque réponse :
@@ -480,6 +481,7 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
             raise KeyError("text")
     except (KeyError, IndexError, TypeError):
         raise AgentError(502, "Je n'ai pas bien compris, tu peux répéter ?")
+    fallback = False
     try:
         answer = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip()).strip())
     except json.JSONDecodeError:
@@ -489,6 +491,7 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
                 raise AgentError(502, "Je n'ai pas bien compris, tu peux répéter ?")
             # « remplis tout »: the programme is made by the server anyway, the model's long answer is not needed
             answer = {"reply": "C'est fait, je t'ai rempli un programme varié." if language != "en" else "Done, I filled in a varied programme.", "done": False}
+            fallback = True
         else:
             answer = {"reply": text.strip(), "done": False}
     patch, rejected = clean_patch(answer["form"] if isinstance(answer.get("form"), dict) else answer, names)
@@ -512,6 +515,11 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
     if DEPARTURE_ASKED.search(" ".join(str(m["text"]) for m in turns if m["role"] == "model")):
         still_missing = [m for m in still_missing if "départ" not in m]  # asked once: it never blocks the end
     reply = str(answer.get("reply") or "").strip() or "Je n'ai pas bien compris, tu peux reformuler ?"
+    if fallback and not patch.get("days"):  # nothing was filled (the length of the stay is unknown): never say it was
+        need = [m for m in still_missing if not m.startswith(("programme", "hôtel", "nombre de chambres", "ville"))]
+        reply = ((("I'd love to, but first I need: " + ", ".join(need[:2]) + ".") if language == "en"
+                  else ("Avec plaisir, mais il me faut d'abord : " + ", ".join(need[:2]) + ".")) if need
+                 else ("Tell me what to fill in." if language == "en" else "Dis-moi ce que tu veux que je remplisse."))
     if rejected:
         reply += " (Je n'ai pas trouvé : " + ", ".join(sorted(set(rejected))) + ".)"
     choices = None

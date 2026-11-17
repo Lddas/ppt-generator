@@ -239,4 +239,7 @@ assert "partent" not in r["reply"] and not any("départ" in m for m in r["missin
 def truncated(body, key, model): return {"candidates": [{"content": {"parts": [{"text": '{"reply": "ok", "form": {"days": [{"day": 1,'}]}}]}
 r = agent.respond([{"role": "user", "text": "pour un test remplis tout au hasard"}], {**form2, "numDays": 2, "days": [{"slots": ["", "", "", "", ""], "notes": []}] * 2}, NAMES, today="2026-11-14", api_key="k", model="m", caller=truncated)
 assert r["patch"].get("days"), r
+# « remplis tout » before the stay is known: never claim it was done
+r = agent.respond([{"role": "user", "text": "peux tout remplir au hasard c'est un test"}], {}, NAMES, today="2026-11-14", api_key="k", model="m", caller=truncated)
+assert not r["patch"].get("days") and "d'abord" in r["reply"] and "rempli" not in r["reply"], r
 print("test_agent: ok")
