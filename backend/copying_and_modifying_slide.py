@@ -962,6 +962,13 @@ def add_hotel_proposals(pasteIntoPres, hotels):
     slide, ph = _copy_slide(source, number, pasteIntoPres)
     for sh in [sh for sh in slide.shapes if sh.shape_type == 13]:  # the example's photos (Es Saadi)
         sh._element.getparent().remove(sh._element)
+    if 11 not in ph or 12 not in ph:
+        # the small slice has plain shapes instead of placeholders: find them by their text (label / big line)
+        texts = [sh._element for sh in slide.shapes if sh.has_text_frame and sh.text_frame.text.strip()]
+        ph = dict(ph)
+        for el in texts:
+            label = "".join(el.itertext()).strip().upper().startswith("PROPOSITIONS")
+            ph[12 if label else 11] = el
     height, width = pasteIntoPres.slide_height, pasteIntoPres.slide_width
     photos = [c for c in cards if c["blob"]][:3]
     if photos:
