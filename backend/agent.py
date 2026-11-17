@@ -358,9 +358,17 @@ BREAKFAST = re.compile(r"petit[- ]?d[ée]j|breakfast", re.I)
 ARRIVAL = re.compile(r"arriv|premier jour|jour 1|first day|day 1", re.I)
 
 
+DEPARTURE_ASKED = re.compile(r"d['’]o[uù]\s+(part|vien|ven|décol|decol)|partent|ville.{0,25}d[ée]part|d[ée]part.{0,25}vol|where .{0,30}(fly|depart|travel)|departure cit", re.I)
+
+
 def next_question(merged, turns, reply, still_missing, language):
     """The questions the assistant must not forget, in order. Returns (text, choices) or None."""
     said = " ".join(str(m["text"]) for m in turns if m["role"] == "model") + " " + reply
+    if (any("départ" in m for m in still_missing) and merged.get("numPeople") and merged.get("startDate")
+            and not DEPARTURE_ASKED.search(said)):
+        text = ("Where are the participants flying from? One city or several." if language == "en"
+                else "D'où partent les participants ? Une ville, ou plusieurs.")
+        return text, None
     hotels = merged.get("hotels") or []
     if len(hotels) == 1 and hotels[0].get("rooms") and not HOTEL_ASKED.search(said):
         text = ("Do you want to propose another hotel as well (up to three)?" if language == "en"
@@ -471,13 +479,18 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
         if not text.strip():
             raise KeyError("text")
     except (KeyError, IndexError, TypeError):
-        raise AgentError(502, "Réponse vide de Gemini, réessaie.")
+        raise AgentError(502, "Je n'ai pas bien compris, tu peux répéter ?")
     try:
         answer = json.loads(re.sub(r"^```(?:json)?|```$", "", text.strip()).strip())
     except json.JSONDecodeError:
         if text.lstrip().startswith(("{", "[")):  # truncated JSON: never show it to the user
-            raise AgentError(502, "Réponse illisible de Gemini, réessaie ou reformule.")
-        answer = {"reply": text.strip(), "done": False}
+            last = next((m["text"] for m in reversed(turns) if m["role"] == "user"), "")
+            if not wants_program(last.lower()):
+                raise AgentError(502, "Je n'ai pas bien compris, tu peux répéter ?")
+            # « remplis tout »: the programme is made by the server anyway, the model's long answer is not needed
+            answer = {"reply": "C'est fait, je t'ai rempli un programme varié." if language != "en" else "Done, I filled in a varied programme.", "done": False}
+        else:
+            answer = {"reply": text.strip(), "done": False}
     patch, rejected = clean_patch(answer["form"] if isinstance(answer.get("form"), dict) else answer, names)
     last_user = next((m["text"] for m in reversed(turns) if m["role"] == "user"), "").lower()
     merged = merge(form, patch)
@@ -496,6 +509,8 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
         merged = merge(form, patch)
     patch, merged = _cut_after_departure(merged, patch)
     still_missing = missing_fields(merged)
+    if DEPARTURE_ASKED.search(" ".join(str(m["text"]) for m in turns if m["role"] == "model")):
+        still_missing = [m for m in still_missing if "départ" not in m]  # asked once: it never blocks the end
     reply = str(answer.get("reply") or "").strip() or "Je n'ai pas bien compris, tu peux reformuler ?"
     if rejected:
         reply += " (Je n'ai pas trouvé : " + ", ".join(sorted(set(rejected))) + ".)"
@@ -518,7 +533,7 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
     if pending:
         reply += " " + pending[0]
         kind = pending[1]
-        choices = {"kind": kind, "label": CHOICE_KINDS[kind], "options": names[kind], "open": False}
+        choices = {"kind": kind, "label": CHOICE_KINDS[kind], "options": names[kind], "open": False} if kind else None
         done = False
     if not form.get("hasLogo") and "logo" not in last_user and (choices is None or choices["kind"] == "logo"):
         mentions = "logo" in reply.lower()

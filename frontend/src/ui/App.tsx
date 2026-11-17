@@ -5,7 +5,7 @@ import Recap from './Recap'
 import Admin from './Admin'
 import { LangButton, LangContext, Lang, readLang, saveLang, tNow, useT } from './i18n'
 import {
-  DayPlan, Form, GROUPS, GROUP_EN, fitsSlot, isDeparture, HOTEL_OPTIONS, HotelEntry, SLOTS, applyPatch, dayLabel, datesLabel, emptyDay, initialForm,
+  DayPlan, Form, GROUPS, GROUP_EN, fitsSlot, isDeparture, daySlotTotal, HOTEL_OPTIONS, HotelEntry, SLOTS, applyPatch, dayLabel, datesLabel, emptyDay, initialForm,
 } from './data'
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
@@ -347,7 +347,7 @@ function StepProgram({ form, set, day, setDay }: {
           <button key={i} role="tab" type="button" aria-selected={i === day} className="day-tab" onClick={() => setDay(i)}>
             <span className="block text-sm font-semibold">{t('Jour', 'Day')} {i + 1}</span>
             <span className={`block text-xs ${i === day ? 'text-white/75' : 'text-[var(--muted)]'}`}>
-              {filled(d) ? `${filled(d)} / 5` : t('vide', 'empty')}
+              {filled(d) ? `${filled(d)} / ${daySlotTotal(d.slots)}` : t('vide', 'empty')}
             </span>
           </button>
         ))}
@@ -503,7 +503,7 @@ function Summary({ form, nights, datesText, hasLogo, known, onLogo }: {
               <p key={i} className="flex items-center justify-between py-0.5">
                 <span>{t('Jour', 'Day')} {i + 1}</span>
                 <span className={n === 5 ? 'font-medium text-[var(--ok)]' : n ? 'font-medium text-[var(--ok)]' : 'text-[var(--taupe)]'}>
-                  {n ? `${n} / 5` : t('à remplir', 'to fill')}
+                  {n ? `${n} / ${daySlotTotal(d.slots)}` : t('à remplir', 'to fill')}
                 </span>
               </p>
             )
