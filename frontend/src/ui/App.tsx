@@ -539,7 +539,7 @@ function AppInner() {
   const [authed, setAuthed] = useState(() => !!getPassword())
   const [form, setForm] = useState<Form>(loadDraft)
   // A fresh visit starts with the assistant; a saved draft resumes in the form
-  const [mode, setMode] = useState<'agent' | 'form' | 'recap' | 'admin'>(() => (loadDraft().client.trim() ? 'form' : 'agent'))
+  const [mode, setMode] = useState<'agent' | 'form' | 'recap' | 'admin'>('agent') // always open on the assistant, even with a saved draft
   const [chat, setChat] = useState<ChatMessage[]>([])
   // what the assistant has actually been told so far (the summary shows the rest as « à renseigner »)
   const [known, setKnown] = useState<Set<string>>(() => (loadDraft().client.trim() ? new Set(['client', 'eventTitle', 'startDate', 'numDays', 'numNights', 'numPeople', 'departureCities', 'hotels', 'days']) : new Set()))
