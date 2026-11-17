@@ -49,21 +49,27 @@ Le serveur n'ouvre que de petits fichiers : mémoire et temps de génération fa
 
 ## Cloud Run (alternative à Render, facturé à l'usage)
 
-Le serveur ne travaille que quelques secondes par présentation : sur Cloud Run il s'éteint tout seul quand personne ne s'en sert (« min instances = 0 ») et on ne paie que ces secondes. Le même `Dockerfile` convient, rien à changer dans le code. Mémoire d'une génération : environ 0,5 Go, donc 2 Gio laissent de la marge.
+Le serveur ne travaille que quelques secondes par présentation : sur Cloud Run il s'éteint tout seul quand personne ne s'en sert (« min instances = 0 ») et on ne paie que ces secondes. Le même `Dockerfile` convient (le port vient de `$PORT`, 8080 par défaut). Mémoire d'une génération : environ 0,5 Go.
 
-Une fois le projet Google Cloud créé (facturation activée) et `gcloud` installé, depuis la racine du dépôt :
+**Coût.** Palier gratuit mensuel (facturation « à la requête », région de niveau 1 comme `europe-west1`) : 180 000 vCPU-secondes, 360 000 Gio-secondes et 2 millions de requêtes ([tarifs](https://cloud.google.com/run/pricing)). Une génération dure environ 10 s : ça fait plusieurs milliers de présentations par mois gratuites. Une alerte de budget évite toute surprise : *Facturation → Budgets et alertes*, par exemple 5 €.
+
+**Déploiement, sans rien installer** : ouvrir [Cloud Shell](https://shell.cloud.google.com) (terminal dans le navigateur, `gcloud` est déjà là), cloner le dépôt puis, depuis sa racine :
 
 ```bash
 gcloud run deploy ppt-generator-api --source . --region europe-west1 \
-  --memory 2Gi --cpu 1 --concurrency 1 --timeout 300 --min-instances 0 --max-instances 3 \
+  --memory 2Gi --cpu 2 --concurrency 3 --timeout 300 --min-instances 0 --max-instances 3 \
   --allow-unauthenticated \
   --set-env-vars APP_PASSWORD=...,GEMINI_API_KEY=...,ADMIN_CODE=...
 ```
 
-- `--concurrency 1` : une génération par instance (elles sont gourmandes en mémoire), Cloud Run en lance une autre au besoin.
-- Premier appel après une période d'inactivité : démarrage à froid de quelques secondes à une trentaine de secondes.
-- Le fichier de coûts de la page admin est remis à zéro à chaque nouvelle instance (comme sur Render sans Disk).
-- Le site doit ensuite pointer vers l'adresse Cloud Run : variable `VITE_API_URL` au build du site, ou la valeur par défaut dans `frontend/src/ui/App.tsx`.
+(`--allow-unauthenticated` : l'adresse est publique, mais chaque appel exige `APP_PASSWORD`.) Variante : console Google Cloud → Cloud Run → *Créer un service* → *Déployer en continu depuis un référentiel* (GitHub), les mêmes réglages s'y trouvent.
+
+- `--concurrency 3` avec 2 Gio : l'assistant (requêtes légères) et une génération se partagent une instance, sans démarrage à froid à chaque message. `--max-instances 3` plafonne la dépense.
+- **Réponse de plus de 32 Mio** : Cloud Run refuse une réponse HTTP/1 de cette taille sauf si elle est envoyée par morceaux. `/generate` la découpe donc en blocs de 1 Mio (sans `Content-Length`).
+- **Démarrage à froid** : le premier appel après une période d'inactivité prend quelques secondes à une trentaine de secondes. Le site réveille le serveur dès l'ouverture de la page (avant même la connexion), donc la génération ne l'attend presque jamais.
+- Le fichier de coûts de la page admin est remis à zéro à chaque nouvelle instance (très souvent ici : l'instance s'éteint après quelques minutes d'inactivité).
+- Le site doit ensuite pointer vers l'adresse Cloud Run : variable `VITE_API_URL` au build du site (Vercel), ou la valeur par défaut dans `frontend/src/ui/App.tsx`.
+- Basculer sans coupure : déployer Cloud Run, tester avec `VITE_API_URL` sur un déploiement à part, puis seulement changer l'adresse du site de production. Render reste actif jusque-là.
 
 ## Assistant (Gemini Flash)
 

@@ -530,6 +530,8 @@ export default function App() {
   const [lang, setLangState] = useState<Lang>(readLang)
   const setLang = (l: Lang) => { saveLang(l); setLangState(l); document.documentElement.lang = l }
   useEffect(() => { document.documentElement.lang = lang }, [])
+  // wake the server up (Cloud Run stops it when nobody uses it): by the time the person is logged in it is ready
+  useEffect(() => { fetch(`${API_URL}/`, { mode: 'no-cors' }).catch(() => {}) }, [])
   return <LangContext.Provider value={{ lang, setLang }}><AppInner /></LangContext.Provider>
 }
 
