@@ -127,7 +127,7 @@ merged_days = agent.merge({"numDays": 3, "days": form3["days"]}, r["patch"])["da
 assert merged_days[0]["slots"][1] == "ARRIVEE" and agent.is_departure(merged_days[2]["slots"][3]) and all(c for c in merged_days[1]["slots"][1:]), merged_days
 
 # several hotels: after one hotel the assistant asks about others, once; at most three are kept
-r = turn({"reply": "Noté.", "done": False, "form": {"hotels": [{"hotelName": "MAMOUNIA", "rooms": 12}]}})
+r = turn({"reply": "Noté.", "done": False, "form": {"client": "A", "hotels": [{"hotelName": "MAMOUNIA", "rooms": 12}]}})
 assert "autre hôtel" in r["reply"] and r["choices"]["kind"] == "hotels" and r["choices"]["open"] is False
 r = agent.respond([{"role": "user", "text": "x"}, {"role": "model", "text": "Tu veux un autre hôtel ?"}, {"role": "user", "text": "non"}], {"hotels": [{"hotelName": "MAMOUNIA", "rooms": 12}]},
                   NAMES, api_key="k", model="m", caller=fake({"reply": "Parfait.", "done": False}))
@@ -239,4 +239,11 @@ assert "partent" not in r["reply"] and not any("départ" in m for m in r["missin
 def truncated(body, key, model): return {"candidates": [{"content": {"parts": [{"text": '{"reply": "ok", "form": {"days": [{"day": 1,'}]}}]}
 r = agent.respond([{"role": "user", "text": "pour un test remplis tout au hasard"}], {**form2, "numDays": 2, "days": [{"slots": ["", "", "", "", ""], "notes": []}] * 2}, NAMES, today="2026-11-14", api_key="k", model="m", caller=truncated)
 assert r["patch"].get("days"), r
+# « remplis tout » before the stay is known: never claim it was done
+r = agent.respond([{"role": "user", "text": "peux tout remplir au hasard c'est un test"}], {}, NAMES, today="2026-11-14", api_key="k", model="m", caller=truncated)
+assert not r["patch"].get("days") and "d'abord" in r["reply"] and "rempli" not in r["reply"], r
+# the model claims everything is filled while the basics are missing: the reply is replaced by what is needed
+def claims(body, key, model): return {"candidates": [{"content": {"parts": [{"text": '{"reply": "Voilà, j\'ai tout rempli pour ton test !", "done": true}'}]}}]}
+r = agent.respond([{"role": "user", "text": "je vais faire le test"}], {}, NAMES, today="2026-11-14", api_key="k", model="m", caller=claims)
+assert "rempli" not in r["reply"] and "il me faut" in r["reply"] and r["done"] is False, r
 print("test_agent: ok")
