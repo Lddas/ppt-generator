@@ -585,6 +585,12 @@ def clear_cache():
     _cache.clear()
 
 
+def release(*paths):
+    """Forget big decks once they are no longer needed, so they do not all sit in memory at the same time."""
+    for path in paths:
+        _cache.pop(path, None)
+
+
 def _remove(el):
     if el is not None and el.getparent() is not None:
         el.getparent().remove(el)
@@ -868,13 +874,15 @@ def parse_cities(text):
 def add_multi_flight_slides(pasteIntoPres, cities, outbound_date="", return_date=""):
     """Flight plans from several cities: an outbound and a return slide, one row per city.
     Times are not known here: they are left for the team to fill in by hand."""
-    template = Presentation(os.path.join(os.path.dirname(os.path.abspath(__file__)), NEW_DA_FILE))
+    template = _load(NEW_DA_FILE)  # already in memory: a second copy of the 160 MB design file is not needed
     layout_name = MULTI_FLIGHT_LAYOUT.format(min(max(len(cities), 2), 5))
     layout = next(l for l in template.slide_layouts if l.name == layout_name)
     slides = []
     for title, date, outbound in (("AVION ALLER", outbound_date, True), ("AVION RETOUR", return_date, False)):
         template.slides.add_slide(layout)
         slide, ph = _copy_slide(template, len(template.slides) - 1, pasteIntoPres)
+        ids = template.slides._sldIdLst  # the temporary slide must not stay in the cached design file
+        ids.remove(ids[-1])
         _fill(ph, 15, title)
         for k, row in enumerate(MULTI_FLIGHT_ROWS):
             if k >= len(cities):
@@ -949,7 +957,9 @@ def add_hotel_proposals(pasteIntoPres, hotels):
     cards = [c for c in (_hotel_card(h.get("hotelName")) for h in hotels) if c]
     if len(cards) < 2:
         return
-    slide, ph = _copy_slide(_load("liste_HOTELS.pptx"), 1, pasteIntoPres)
+    path, position = _slices().get(("liste_HOTELS.pptx", 1), (None, None))  # the small slice, never the 450 MB deck
+    source, number = (_load(path), position) if path and os.path.exists(path) else (_load("liste_HOTELS.pptx"), 1)
+    slide, ph = _copy_slide(source, number, pasteIntoPres)
     for sh in [sh for sh in slide.shapes if sh.shape_type == 13]:  # the example's photos (Es Saadi)
         sh._element.getparent().remove(sh._element)
     height, width = pasteIntoPres.slide_height, pasteIntoPres.slide_width
