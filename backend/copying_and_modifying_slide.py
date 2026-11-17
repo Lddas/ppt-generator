@@ -980,23 +980,32 @@ def add_hotel_proposals(pasteIntoPres, hotels):
         half = (height - 548640 - 182880) // 2
         _cover_picture(slide, photos[1]["blob"], right, 274320, width - right - 274320, half)
         _cover_picture(slide, photos[2]["blob"], right, 274320 + half + 182880, width - right - 274320, half)
-    # the small label on top, the hotels under it (the example had one hotel as the big burgundy line)
-    if 12 in ph:
-        ph[12].find('p:spPr/a:xfrm/a:off', _NS).set('y', '640080')
-        ph[12].find('p:spPr/a:xfrm/a:ext', _NS).set('cy', '420000')
+    # as in the original slide: the hotels in the big burgundy line (original font and size), the small label under them
+    lines = 0
+    for card in cards:
+        row, count = "", 1
+        for word in card["title"].split():
+            if row and len(row) + 1 + len(word) > 13:  # about 13 capitals of the 32 pt title font fit the box
+                row, count = word, count + 1
+            else:
+                row = (row + " " + word).strip()
+        lines += count
+    names_height = lines * 487680 + (len(cards) - 1) * 228600
     if 11 in ph:
-        ph[11].find('p:spPr/a:xfrm/a:off', _NS).set('y', '1300000')
-        ph[11].find('p:spPr/a:xfrm/a:ext', _NS).set('cy', '4200000')
-        _set_lines(ph[11], [c["title"] for c in cards], size=20)
-        ph[11].find('p:txBody/a:bodyPr', _NS).set('anchor', 't')  # the list starts right under the label
-        ph[11].find('p:spPr/a:xfrm/a:off', _NS).set('y', '1250000')
-        for paragraph in ph[11].findall('p:txBody/a:p', _NS):
+        ph[11].find('p:spPr/a:xfrm/a:off', _NS).set('y', '480060')
+        ph[11].find('p:spPr/a:xfrm/a:ext', _NS).set('cy', str(names_height))
+        _set_lines(ph[11], [c["title"] for c in cards])  # no size: the template's own
+        ph[11].find('p:txBody/a:bodyPr', _NS).set('anchor', 't')
+        for paragraph in ph[11].findall('p:txBody/a:p', _NS)[:-1]:  # a little air between two hotels
             spacing = etree.SubElement(paragraph, _A + 'pPr') if paragraph.find('a:pPr', _NS) is None else paragraph.find('a:pPr', _NS)
             if spacing.find('a:spcAft', _NS) is None:
                 after = etree.SubElement(spacing, _A + 'spcAft')
                 etree.SubElement(after, _A + 'spcPts', val='1800')
             paragraph.remove(spacing)
             paragraph.insert(0, spacing)
+    if 12 in ph:
+        ph[12].find('p:spPr/a:xfrm/a:off', _NS).set('y', str(480060 + names_height + 60000))
+        ph[12].find('p:spPr/a:xfrm/a:ext', _NS).set('cy', '420000')
 
 
 def add_transport_slide(pasteIntoPres, outbound_date="", return_date="", city="PARIS"):

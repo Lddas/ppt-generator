@@ -430,6 +430,21 @@ def _race(models, call, hedge_after, fatal=lambda error: False):
         pool.shutdown(wait=False)
 
 
+BUDGET_MESSAGE = "L'assistant n'a plus de budget Gemini. Préviens Léo pour qu'il recharge le compte, en attendant tu peux remplir le formulaire à la main."
+BUDGET_WORDS = re.compile(r"prepay|credit|billing|budget|spend|depleted|suspended|disabled|expired|API key|permission_denied|payment", re.I)
+
+
+def is_budget_error(code, detail):
+    """No money (or no valid key) left at Google: a 403, an invalid key, or a 429 that talks about credits / billing.
+    A plain 429 « rate limit » is not that: it passes in a few seconds."""
+    detail = detail or ""
+    if code == 402 or code == 403:
+        return True
+    if code == 400 and re.search(r"API key|expired|invalid", detail, re.I):
+        return True
+    return code == 429 and bool(BUDGET_WORDS.search(detail))
+
+
 def call_gemini(body, api_key, model, hedge_after=4.0):
     """Calls the model; if it is overloaded (429/500/503/404) or slow, the next Flash is raced against it."""
     models = [model] + [m for m in FALLBACK_MODELS if m != model]
@@ -438,9 +453,9 @@ def call_gemini(body, api_key, model, hedge_after=4.0):
         return _race(models, lambda m: {**_call_once(body, api_key, m), "_model": m}, hedge_after,
                      fatal=lambda e: isinstance(e, urllib.error.HTTPError) and e.code not in retriable)
     except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", "replace")[:300]
-        if error.code in (400, 403) and "API key" in detail:
-            raise AgentError(502, "La clé Gemini est refusée. Vérifie GEMINI_API_KEY sur le serveur.")
+        detail = error.read().decode("utf-8", "replace")[:600]
+        if is_budget_error(error.code, detail):
+            raise AgentError(402, BUDGET_MESSAGE)
         raise AgentError(429 if error.code == 429 else 502, "Gemini est saturé pour le moment, réessaie dans quelques secondes."
                          if error.code in (429, 503) else f"Gemini a répondu {error.code}.")
     except (urllib.error.URLError, TimeoutError):
@@ -621,6 +636,18 @@ def speech_stream(text, api_key=None, voice=None, opener=_open_stream, info=None
                     info["bytes"] = info.get("bytes", 0) + len(pcm)
                     info["chars"] = len(text)
                     yield pcm
+        except urllib.error.HTTPError as error:
+            detail = ""
+            try:
+                detail = error.read().decode("utf-8", "replace")[:600]
+            except Exception:  # noqa: BLE001
+                pass
+            if not started and is_budget_error(error.code, detail):
+                raise AgentError(402, BUDGET_MESSAGE)
+            if started:
+                return
+            last = AgentError(504, "La voix ne répond pas.")
+            continue
         except (urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, TypeError):
             if started:
                 return  # cut off in the middle: what was said is said

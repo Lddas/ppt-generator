@@ -534,14 +534,7 @@
         "index": 163,
         "nb_slides": 12,
         "image" : [11, 4]
-    },
-    "KABANA": {
-        "ppt": "liste_REPAS.pptx",
-        "index": 176,
-        "nb_slides": 4,
-        "image" : [11, 3]
-    },
-    "LOTUS CLUB": {
+    },    "LOTUS CLUB": {
         "ppt": "liste_REPAS.pptx",
         "index": 181,
         "nb_slides": 7,

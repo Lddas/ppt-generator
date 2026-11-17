@@ -32,7 +32,7 @@ export class Speaker {
   }
 
   /** Reads the text out loud; resolves when finished or interrupted. If the server voice is down it stays silent: never a second voice. */
-  async say(text: string, onStart?: () => void): Promise<'ok' | 'unavailable'> {
+  async say(text: string, onStart?: () => void): Promise<'ok' | 'unavailable' | 'budget'> {
     this.stop()
     const id = this.token
     const ctx = this.context()
@@ -70,6 +70,7 @@ export class Speaker {
         body: JSON.stringify({ text }),
         signal: controller.signal,
       })
+      if (res.status === 402) return 'budget' // no more Gemini money
       if (!res.ok || !res.body) return 'unavailable'
       const reader = res.body.getReader()
       for (;;) {
