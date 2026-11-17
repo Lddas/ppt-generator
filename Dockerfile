@@ -1,5 +1,7 @@
 FROM python:3.9-slim
 
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Copy requirements first for better caching
@@ -17,4 +19,5 @@ COPY backend/ ./backend/
 RUN cd backend && STRICT_ASSETS=1 python fetch_assets.py
 
 # Start the application (no fetch_assets needed at runtime)
-CMD ["sh", "-c", "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"]
+# Cloud Run and Render both give the port in $PORT (8080 if it is missing)
+CMD ["sh", "-c", "cd backend && exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]

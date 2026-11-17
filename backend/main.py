@@ -409,15 +409,22 @@ async def generate(
     sanitized_client = sanitized_client.replace(' ', '_')
     filename = f"presentation_marrakech_{sanitized_client}.pptx"
     
-    # Not a StreamingResponse over BytesIO: iterating a BytesIO yields one chunk per b"\n",
-    # i.e. thousands of tiny chunks for a binary file
-    return Response(
-        content=pptx_bytes,
+    # Sent in 1 MB chunks without a Content-Length (chunked transfer): Cloud Run refuses a plain HTTP/1
+    # response above 32 MiB, and a rich programme can get there. (Not iterating a BytesIO: it yields one
+    # chunk per b"\n", i.e. thousands of tiny chunks for a binary file.)
+    return StreamingResponse(
+        chunked(pptx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"'
         },
     )
+
+
+def chunked(data: bytes, size: int = 1 << 20):
+    """The bytes in slices of `size`, for a streamed (chunked) response."""
+    for start in range(0, len(data), size):
+        yield data[start:start + size]
 
 
 _agent_calls = defaultdict(deque)
