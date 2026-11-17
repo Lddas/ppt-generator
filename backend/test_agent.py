@@ -137,7 +137,7 @@ assert len(r["patch"]["hotels"]) == 3
 
 # the breakfast question of the arrival day comes once the programme is filled
 full = {"client": "A", "startDate": "2026-12-12", "numDays": 1, "numPeople": 10, "departureCities": "", "hotels": [{"hotelName": "MAMOUNIA", "rooms": 3}, {"hotelName": "PARK HYATT", "rooms": 3}],
-        "days": [{"slots": ["", "QUAD", "DAR CHERIFA", "SPA", "KABANA"], "notes": []}]}
+        "days": [{"slots": ["", "QUAD", "DAR CHERIFA", "SPA", "LOTUS CLUB"], "notes": []}]}
 r = turn({"reply": "Programme prêt.", "done": True}, full)
 assert "petit-déjeuner" in r["reply"] and r["choices"]["kind"] == "breakfasts" and r["done"] is False
 
