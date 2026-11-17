@@ -584,12 +584,12 @@ TTS_MODELS = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.1-f
 TTS_VOICE = "Charon"  # override with GEMINI_VOICE
 
 
-VOICE_STYLE = "Dis ce texte d'une voix d'homme grave, posée, chaleureuse et toujours la même, à un rythme calme et naturel : "
+# Only the text goes to the voice model: any instruction put in front of it is read aloud. The voice comes from voiceName.
 
 
 def _tts_body(text, voice):
     return {
-        "contents": [{"parts": [{"text": VOICE_STYLE + text}]}],
+        "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {
             "prebuiltVoiceConfig": {"voiceName": voice or usage.get_config().get("voice") or os.environ.get("GEMINI_VOICE") or TTS_VOICE}}}},
     }
