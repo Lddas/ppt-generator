@@ -8,7 +8,7 @@ import {
   DayPlan, Form, GROUPS, GROUP_EN, fitsSlot, isDeparture, daySlotTotal, HOTEL_OPTIONS, HotelEntry, SLOTS, applyPatch, dayLabel, datesLabel, emptyDay, initialForm,
 } from './data'
 
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-8v70.onrender.com'
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://ppt-generator-api-954215538220.europe-west1.run.app'
 const DRAFT_KEY = 'pref-ppt-draft-v1'
 // The password is checked by the server (APP_PASSWORD); the tab only remembers what was typed.
 const AUTH_KEY = 'pref-ppt-pw'
