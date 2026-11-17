@@ -252,4 +252,26 @@ assert not r["patch"].get("days") and "d'abord" in r["reply"] and "rempli" not i
 def claims(body, key, model): return {"candidates": [{"content": {"parts": [{"text": '{"reply": "Voilà, j\'ai tout rempli pour ton test !", "done": true}'}]}}]}
 r = agent.respond([{"role": "user", "text": "je vais faire le test"}], {}, NAMES, today="2026-11-14", api_key="k", model="m", caller=claims)
 assert "rempli" not in r["reply"] and "il me faut" in r["reply"] and r["done"] is False, r
+# no budget left: a clear message for the chat (HTTP 402); a plain rate limit is not that
+import io, urllib.error
+def http_error(code, text): return urllib.error.HTTPError("u", code, "x", {}, io.BytesIO(text.encode()))
+def failing(code, text):
+    def call(body, key, model): raise http_error(code, text)
+    return call
+real_call = agent._call_once
+for code, text, expected in ((403, "PERMISSION_DENIED", 402), (400, "API key expired. Please renew the API key.", 402),
+                             (429, "Your prepayment credits are depleted", 402), (429, "Resource has been exhausted (rate limit per minute)", 429)):
+    agent._call_once = failing(code, text)
+    try:
+        agent.call_gemini({}, "k", "m", hedge_after=0.01)
+        raise SystemExit("expected an error")
+    except agent.AgentError as error:
+        assert error.status == expected, (code, text, error.status)
+        assert expected != 402 or "Léo" in error.message
+agent._call_once = real_call
+try:
+    list(agent.speech_stream("Bonjour", api_key="k", opener=lambda r: (_ for _ in ()).throw(http_error(403, "billing"))))
+    raise SystemExit("expected a budget error from the voice")
+except agent.AgentError as error:
+    assert error.status == 402
 print("test_agent: ok")

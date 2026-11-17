@@ -15,6 +15,7 @@ const TEXTS = {
     thinking: 'Je réfléchis…', talking: 'Je parle… (parle ou clique sur la bulle pour me couper)', listening: 'Je t’écoute, parle…', dictating: 'Je t’écoute…', typing: 'Écris ou dicte…',
     conversation: 'Conversation', stop: 'Arrêter', see: 'Voir les',
     allDone: 'Tout est rempli.', doneHelp: 'Ouvre le récapitulatif pour tout relire, modifier si besoin, puis générer la présentation. Tu peux aussi continuer à ajuster ici.',
+    budget: 'L’assistant n’a plus de budget Gemini. Préviens Léo pour qu’il recharge le compte. En attendant, tu peux remplir le formulaire à la main.',
     recap: 'Voir le récapitulatif', voiceDown: 'La voix de l’assistant est indisponible pour le moment (quota Gemini atteint). Les réponses restent écrites, tu peux continuer à parler.', micBlocked: 'Le micro est bloqué. Autorise-le pour ce site dans les réglages du navigateur.',
     labels: {} as Record<string, string>,
   },
@@ -24,6 +25,7 @@ const TEXTS = {
     thinking: 'Thinking…', talking: 'Speaking… (talk or click the orb to interrupt)', listening: 'I’m listening, go ahead…', dictating: 'Listening…', typing: 'Type or dictate…',
     conversation: 'Conversation', stop: 'Stop', see: 'See the',
     allDone: 'Everything is filled in.', doneHelp: 'Open the summary to review everything, edit if needed, then generate the presentation. You can also keep adjusting here.',
+    budget: 'The assistant is out of Gemini budget. Please tell Léo to top up the account. Meanwhile you can fill in the form by hand.',
     recap: 'See the summary', voiceDown: 'The assistant’s voice is unavailable right now (Gemini quota reached). Replies stay in writing, you can keep talking.', micBlocked: 'The microphone is blocked. Allow it for this site in your browser settings.',
     labels: { hotels: 'hotels', breakfasts: 'breakfasts', meals: 'restaurants & evenings', activities: 'activities', activities_morning: 'morning activities', activities_afternoon: 'afternoon activities' } as Record<string, string>,
   },
@@ -139,7 +141,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
       if (!res.ok) {
         let detail = `Erreur ${res.status}`
         try { detail = (await res.json()).detail || detail } catch { /* not JSON */ }
-        throw new Error(detail)
+        throw Object.assign(new Error(detail), { budget: res.status === 402 })
       }
       const data = await res.json()
       onPatch(data.patch || {})
@@ -155,7 +157,7 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
       setMessages([...history, {
         role: 'error', // shown like a normal reply: people do not know what a technical error means
         text: offline ? tt('Le serveur ne répond pas. Réessaie dans un instant, ou remplis le formulaire à la main.', 'The server is not answering. Try again in a moment, or fill in the form by hand.')
-          : isAuth ? e.message : t.retry,
+          : e?.budget ? t.budget : isAuth ? e.message : t.retry,
       }])
     } finally {
       busyRef.current = false
@@ -205,7 +207,12 @@ export default function AgentScreen({ form, known, onPatch, messages, setMessage
     speaker.current!.say(text, () => { if (id === spokenId.current) setGo(true) }).then(result => {
       if (id !== spokenId.current) return // interrupted, or a newer reply took over
       setGo(true)
-      if (result === 'unavailable' && !voiceNotice.current) {
+      if (result === 'budget' && !voiceNotice.current) {
+        voiceNotice.current = true
+        conversationRef.current = false
+        setConversation(false)
+        setMessages(m => [...m, { role: 'error', text: t.budget }])
+      } else if (result === 'unavailable' && !voiceNotice.current) {
         voiceNotice.current = true
         setMessages(m => [...m, { role: 'error', text: t.voiceDown }])
       }
