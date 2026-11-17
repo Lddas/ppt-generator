@@ -359,6 +359,7 @@ BREAKFAST = re.compile(r"petit[- ]?d[ée]j|breakfast", re.I)
 ARRIVAL = re.compile(r"arriv|premier jour|jour 1|first day|day 1", re.I)
 
 
+CLAIMS_DONE = re.compile(r"tout rempli|t'ai rempli|j'ai rempli|c'est rempli|tout est pr[êe]t|est valid[ée]|i filled|all filled|everything is (filled|ready)|all set", re.I)
 DEPARTURE_ASKED = re.compile(r"d['’]o[uù]\s+(part|vien|ven|décol|decol)|partent|ville.{0,25}d[ée]part|d[ée]part.{0,25}vol|where .{0,30}(fly|depart|travel)|departure cit", re.I)
 
 
@@ -371,7 +372,7 @@ def next_question(merged, turns, reply, still_missing, language):
                 else "D'où partent les participants ? Une ville, ou plusieurs.")
         return text, None
     hotels = merged.get("hotels") or []
-    if len(hotels) == 1 and hotels[0].get("rooms") and not HOTEL_ASKED.search(said):
+    if merged.get("client") and len(hotels) == 1 and hotels[0].get("rooms") and not HOTEL_ASKED.search(said):
         text = ("Do you want to propose another hotel as well (up to three)?" if language == "en"
                 else "Tu veux proposer un autre hôtel en plus (jusqu'à trois) ?")
         return text, "hotels"
@@ -515,6 +516,10 @@ def respond(messages, form, names, today=None, api_key=None, model=None, caller=
     if DEPARTURE_ASKED.search(" ".join(str(m["text"]) for m in turns if m["role"] == "model")):
         still_missing = [m for m in still_missing if "départ" not in m]  # asked once: it never blocks the end
     reply = str(answer.get("reply") or "").strip() or "Je n'ai pas bien compris, tu peux reformuler ?"
+    core = [m for m in still_missing if m in ("nom du client", "date d'arrivée", "nombre de jours", "nombre de personnes")]
+    if core and not patch.get("days") and CLAIMS_DONE.search(reply):  # « tout est rempli » while the basics are missing: never
+        reply = (("Before that, I still need: " + ", ".join(core[:2]) + ".") if language == "en"
+                 else ("Avant ça, il me faut encore : " + ", ".join(core[:2]) + "."))
     if fallback and not patch.get("days"):  # nothing was filled (the length of the stay is unknown): never say it was
         need = [m for m in still_missing if not m.startswith(("programme", "hôtel", "nombre de chambres", "ville"))]
         reply = ((("I'd love to, but first I need: " + ", ".join(need[:2]) + ".") if language == "en"
