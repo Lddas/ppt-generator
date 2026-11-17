@@ -223,6 +223,7 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
         day_dates = [dp.get("date", "") for dp in payload.get("dayPlans", [])]
         print(f"DEBUG: Activities by day: {activities_by_day}")
         gen.make_agenda(output_pres, activities_by_day, day_dates)
+        gen.release("liste_JOUR_N.pptx")  # only used for the agenda thumbnails
         
         # Force garbage collection after agenda
         gc.collect()
@@ -284,7 +285,10 @@ def generate_pptx(tmp_work_dir: str, payload: dict) -> bytes:
             gc.collect()
 
         # Last slides
+        gen.release(gen.NEW_DA_FILE)  # the design file is done: free it before the end slides are loaded
+        gc.collect()
         gen.add_end_slides(output_pres)
+        gen.release(gen.DA_END_FILE)
         
         # Force garbage collection before final save
         gc.collect()

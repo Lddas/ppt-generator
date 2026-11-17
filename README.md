@@ -47,6 +47,24 @@ cd backend && python build_slices.py   # optionnel : découpe les gros modèles,
 
 Le serveur n'ouvre que de petits fichiers : mémoire et temps de génération faibles.
 
+## Cloud Run (alternative à Render, facturé à l'usage)
+
+Le serveur ne travaille que quelques secondes par présentation : sur Cloud Run il s'éteint tout seul quand personne ne s'en sert (« min instances = 0 ») et on ne paie que ces secondes. Le même `Dockerfile` convient, rien à changer dans le code. Mémoire d'une génération : environ 0,5 Go, donc 2 Gio laissent de la marge.
+
+Une fois le projet Google Cloud créé (facturation activée) et `gcloud` installé, depuis la racine du dépôt :
+
+```bash
+gcloud run deploy ppt-generator-api --source . --region europe-west1 \
+  --memory 2Gi --cpu 1 --concurrency 1 --timeout 300 --min-instances 0 --max-instances 3 \
+  --allow-unauthenticated \
+  --set-env-vars APP_PASSWORD=...,GEMINI_API_KEY=...,ADMIN_CODE=...
+```
+
+- `--concurrency 1` : une génération par instance (elles sont gourmandes en mémoire), Cloud Run en lance une autre au besoin.
+- Premier appel après une période d'inactivité : démarrage à froid de quelques secondes à une trentaine de secondes.
+- Le fichier de coûts de la page admin est remis à zéro à chaque nouvelle instance (comme sur Render sans Disk).
+- Le site doit ensuite pointer vers l'adresse Cloud Run : variable `VITE_API_URL` au build du site, ou la valeur par défaut dans `frontend/src/ui/App.tsx`.
+
 ## Assistant (Gemini Flash)
 
 La page d'accueil propose un assistant qui pose des questions et remplit le formulaire (texte ou dictée avec le micro). Il appelle Gemini Flash **depuis le serveur** (`POST /agent`) : la clé ne doit jamais être dans le site, dont le code est public.
